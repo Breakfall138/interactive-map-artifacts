@@ -10,3 +10,4 @@ export { CircleDrawTool } from "./CircleDrawTool";
 export { SelectionCircle } from "./SelectionCircle";
 export { MapLoadingState } from "./MapLoadingState";
 export { MapInitializer } from "./MapInitializer";
+export { SearchFilterBar, type FilterState } from "./SearchFilterBar";

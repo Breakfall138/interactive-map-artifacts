@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { MapView } from "@/components/map";
+import { MapView, SearchFilterBar, type FilterState } from "@/components/map";
+import { useArtifactFilter } from "@/hooks/useArtifactFilter";
 import "leaflet/dist/leaflet.css";
 import type { Artifact } from "@shared/schema";
 
@@ -7,6 +9,14 @@ export default function Home() {
   const { data: artifacts = [], isLoading, error } = useQuery<Artifact[]>({
     queryKey: ["/api/artifacts"],
   });
+
+  const [filters, setFilters] = useState<FilterState>({
+    searchText: "",
+    categories: [],
+    dateRange: { from: undefined, to: undefined },
+  });
+
+  const filteredArtifacts = useArtifactFilter(artifacts, filters);
 
   if (error) {
     return (
@@ -24,9 +34,10 @@ export default function Home() {
   }
 
   return (
-    <div className="h-screen w-screen overflow-hidden">
+    <div className="h-screen w-screen overflow-hidden relative">
+      <SearchFilterBar onFilterChange={setFilters} />
       <MapView
-        artifacts={artifacts}
+        artifacts={filteredArtifacts}
         isLoading={isLoading}
         initialCenter={[40.7128, -74.006]}
         initialZoom={12}
