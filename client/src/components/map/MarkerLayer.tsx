@@ -70,7 +70,7 @@ export function MarkerLayer() {
   // Show loading indicator
   if (isLoading && !data) {
     return (
-      <div className="absolute top-4 right-4 z-[1000] bg-white rounded-lg shadow-lg p-3">
+      <div className="absolute top-16 right-4 z-[1000] bg-white rounded-lg shadow-lg p-3">
         <div className="flex items-center gap-2">
           <div className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full" />
           <span className="text-sm text-gray-700">Loading map data...</span>
@@ -82,7 +82,7 @@ export function MarkerLayer() {
   // Show error message
   if (error) {
     return (
-      <div className="absolute top-4 right-4 z-[1000] bg-red-50 border border-red-200 rounded-lg shadow-lg p-3">
+      <div className="absolute top-16 right-4 z-[1000] bg-red-50 border border-red-200 rounded-lg shadow-lg p-3 max-w-xs">
         <span className="text-sm text-red-700">Failed to load map data</span>
       </div>
     );
@@ -92,7 +92,7 @@ export function MarkerLayer() {
     <>
       {/* Truncation warning */}
       {truncated && (
-        <div className="absolute top-4 right-4 z-[1000] bg-amber-50 border border-amber-200 rounded-lg shadow-lg p-3">
+        <div className="absolute top-16 right-4 z-[1000] bg-amber-50 border border-amber-200 rounded-lg shadow-lg p-3 max-w-xs">
           <span className="text-sm text-amber-800">
             Showing limited results. Zoom in for more detail.
           </span>

@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git clone:*)",
+      "Bash(git init:*)",
+      "Bash(git remote add:*)",
+      "Bash(git fetch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nFix critical security vulnerabilities and code quality issues\n\n- Add security middleware: helmet \\(CSP\\), CORS, rate limiting, request timeouts\n- Fix XSS vulnerability by replacing dangerouslySetInnerHTML with safe React components\n- Add input validation: query parameter bounds, geographic coordinate limits\n- Fix memory leak in MapInitializer by clearing setTimeout on unmount\n- Fix toast timeout accumulation \\(changed from 11 days to 5 seconds\\)\n- Fix race condition in CircleDrawTool by checking isPending before mutations\n- Add graceful shutdown handling for SIGTERM/SIGINT\n- Improve error handling to not expose internal details in production\n- Remove insecure plain-text password user schema\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git push:*)",
+      "Bash(docker exec:*)",
+      "Bash(docker cp:*)",
+      "Bash(docker run:*)",
+      "Bash(curl:*)",
+      "Bash(git commit:*)",
+      "Bash(wc:*)",
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "Bash(npm install:*)",
+      "Bash(docker ps:*)",
+      "Bash(docker inspect:*)",
+      "Bash(docker stop:*)",
+      "Bash(npm run check:*)",
+      "Bash(powershell:*)"
+    ]
+  }
+}

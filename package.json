@@ -60,9 +60,11 @@
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^0.9.1",
     "wouter": "^3.3.0",
+    "pg": "^8.13.1",
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/pg": "^8.11.10",
     "@replit/vite-plugin-runtime-error-modal": "^0.0.3",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
@@ -74,6 +76,7 @@
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.19",
     "postcss": "^8.4.40",
+    "@tailwindcss/typography": "^0.5.15",
     "tailwindcss": "^3.4.7",
     "tsx": "^4.16.2",
     "typescript": "^5.5.4",

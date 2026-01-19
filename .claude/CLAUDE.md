@@ -2,17 +2,18 @@
 
 ## Project Overview
 
-MapUI is an interactive map application for visualizing and querying geospatial artifacts using Leaflet, React, and Express.
+MapUI is an interactive map application for visualizing and querying geospatial artifacts using Leaflet, React, and Express. Currently focused on **Eversource Connecticut service territory** utility infrastructure.
 
 ## Key Documentation
 
-- [Deployment Guide](../docs/DEPLOYMENT.md) - Docker setup and dev environment
+- [Deployment Guide](../docs/DEPLOYMENT.md) - Docker setup with PostGIS
 - [Planned Updates](../PLANNED_UPDATES.md) - Roadmap and enhancement plans
 
 ## Tech Stack
 
 - **Frontend**: React 18, Vite, TailwindCSS, shadcn/ui, react-leaflet
 - **Backend**: Express.js, TypeScript, tsx
+- **Database**: PostgreSQL 16 with PostGIS 3.4 (or in-memory fallback)
 - **Validation**: Zod schemas
 - **State**: TanStack Query (React Query)
 
@@ -29,24 +30,62 @@ MapUI/
 │       └── lib/          # Utilities
 ├── server/           # Express backend
 │   ├── index.ts      # Server entry point with security middleware
-│   ├── routes.ts     # API routes
-│   ├── storage.ts    # Data storage with spatial indexing
+│   ├── routes.ts     # API routes + tile serving
+│   ├── storage.ts    # Storage factory (PostGIS or in-memory)
+│   ├── memStorage.ts # In-memory storage with RBush
+│   ├── db/
+│   │   ├── config.ts        # PostgreSQL connection pool
+│   │   └── postgresStorage.ts # PostGIS storage implementation
 │   └── vite.ts       # Vite dev server integration
 ├── shared/           # Shared types and schemas
 │   └── schema.ts     # Zod validation schemas
-└── docs/             # Documentation
+├── db/               # Database migrations
+│   ├── migrations/
+│   │   ├── 001_initial_schema.sql   # PostGIS schema + indexes
+│   │   └── 002_seed_connecticut.sql # CT utility data (~10k artifacts)
+│   └── init/
+│       └── 01_init.sh    # Docker init script
+├── tiles/            # Raster tile storage
+├── docs/             # Documentation
+├── docker-compose.yml # Full stack orchestration
+├── Dockerfile        # App container definition
+└── .env.example      # Environment template
 ```
 
 ## Running the Project
 
-### Docker (Recommended)
-See [Deployment Guide](../docs/DEPLOYMENT.md)
+### Docker with PostGIS (Recommended)
 
-### Local
+See [Deployment Guide](../docs/DEPLOYMENT.md) for full instructions.
+
+**Quick start:**
+```bash
+# 1. Start PostGIS
+docker run -d --name mapui-postgres \
+  -e POSTGRES_DB=mapui -e POSTGRES_USER=mapui_user -e POSTGRES_PASSWORD=mapui_dev_password \
+  -p 5432:5432 postgis/postgis:16-3.4
+
+# 2. Run migrations (after container is ready)
+docker cp db/migrations/001_initial_schema.sql mapui-postgres:/tmp/
+docker cp db/migrations/002_seed_connecticut.sql mapui-postgres:/tmp/
+docker exec mapui-postgres psql -U mapui_user -d mapui -f /tmp/001_initial_schema.sql
+docker exec mapui-postgres psql -U mapui_user -d mapui -f /tmp/002_seed_connecticut.sql
+
+# 3. Start app container linked to PostGIS
+docker run -d -p 5000:5000 --name mapui-server --link mapui-postgres:postgres \
+  node:24-alpine sh -c "mkdir -p /app && sleep infinity"
+docker cp . mapui-server:/app/
+docker exec mapui-server sh -c "cd /app && npm install"
+docker exec -d -e HOST=0.0.0.0 -e DATABASE_URL=postgresql://mapui_user:mapui_dev_password@postgres:5432/mapui \
+  mapui-server sh -c "cd /app && npx tsx server/index.ts"
+```
+
+### In-Memory (Quick Start)
 ```bash
 npm install
 npm run dev
 ```
+Without `DATABASE_URL`, the app uses in-memory storage with CT seed data.
 
 ## API Endpoints
 
@@ -57,6 +96,20 @@ npm run dev
 | GET | `/api/artifacts/:id` | Get single artifact |
 | POST | `/api/artifacts` | Create new artifact |
 | POST | `/api/artifacts/query/circle` | Query artifacts in circle selection |
+| GET | `/api/artifacts/count` | Get total artifact count |
+| GET | `/api/health` | Health check (storage type + count) |
+| GET | `/api/tiles/info` | Tile layer metadata |
+| GET | `/tiles/:layer/:z/:x/:y.:format` | Serve raster tiles |
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DATABASE_URL` | (empty) | PostgreSQL connection string - if not set, uses in-memory |
+| `HOST` | `127.0.0.1` / `0.0.0.0` | Server bind address |
+| `PORT` | `5000` | Server port |
+| `TILE_STORAGE_PATH` | `./tiles` | Raster tile storage path |
+| `ALLOWED_ORIGINS` | (empty) | CORS origins for production |
 
 ## Security Notes
 
@@ -64,28 +117,74 @@ npm run dev
 - CORS restricted in production (set `ALLOWED_ORIGINS` env var)
 - Rate limiting: 1000 req/15min per IP
 - Input validation on all endpoints
-- No plain-text password storage (auth schemas removed)
+- Path traversal protection on tile endpoint
 
 ## Recent Changes (Jan 2026)
 
-### Security Fixes
-- Added helmet.js, CORS, rate limiting middleware (`server/index.ts`)
-- Fixed XSS vulnerability - replaced `dangerouslySetInnerHTML` with safe React components (`HoverTooltip.tsx`, `MarkerLayer.tsx`)
-- Added geographic coordinate validation to Zod schemas (`shared/schema.ts`)
-- Added query parameter bounds validation (`server/routes.ts` - max limit 10,000)
+### PostGIS Persistence Layer (Latest)
+- Added PostgreSQL/PostGIS support for persistent geospatial storage
+- Storage factory pattern (`server/storage.ts`) - auto-selects PostGIS or in-memory
+- PostGIS spatial queries: `ST_DWithin`, `ST_Intersects`, `ST_MakeEnvelope`
+- GIST spatial indexes for O(log N) queries
+- Connection pooling with graceful shutdown
+- Raster tile serving endpoint (`/tiles/:layer/:z/:x/:y.:format`)
+- Health check endpoint (`/api/health`)
+
+### Connecticut POC Data
+- Replaced NYC POC data with Eversource CT service territory
+- ~10,000 utility infrastructure artifacts (substations, transformers, poles, meters, etc.)
+- Clustered around Hartford, New Haven, Bridgeport, Stamford
+- Map center updated to Connecticut (41.5, -72.7)
+
+### Docker Configuration
+- `docker-compose.yml` for full stack orchestration
+- `Dockerfile` for app container
+- Database migrations in `db/migrations/`
+- Updated deployment docs with PostGIS setup
+
+### Previous Security Fixes
+- Added helmet.js, CORS, rate limiting middleware
+- Fixed XSS vulnerability in tooltips
+- Added geographic coordinate validation
 - Removed insecure plain-text User schema
 
-### Bug Fixes
-- Fixed memory leak in `MapInitializer.tsx` (setTimeout cleanup)
-- Fixed toast timeout (was 11 days, now 5 seconds) in `use-toast.ts`
-- Fixed race condition in `CircleDrawTool.tsx` (check isPending before mutations)
-- Fixed ESM compatibility in `server/static.ts` (__dirname)
+### Previous Bug Fixes
+- Fixed memory leak in `MapInitializer.tsx`
+- Fixed toast timeout (was 11 days, now 5 seconds)
+- Fixed race condition in `CircleDrawTool.tsx`
+- Fixed ESM compatibility in `server/static.ts`
 
-### Infrastructure
-- Added HOST env var for container deployments
-- Added graceful shutdown handling (SIGTERM/SIGINT)
-- Full package.json with all dependencies
+## Known Issues / TODO
 
-## Known Issues / Future Work
+### Needs Testing
+- **Loading errors observed** - stability issues when switching between storage backends
+- PostGIS connection handling under load
+- Tile serving with actual raster tiles (currently returns 204 for missing tiles)
+- Circle selection queries against PostGIS
 
-See [PLANNED_UPDATES.md](../PLANNED_UPDATES.md) for roadmap.
+### Technical Debt
+- Add unit tests for `PostgresStorage` class
+- Add E2E tests with Playwright
+- Improve error boundaries in React components
+- Add structured logging
+
+### Future Enhancements
+See [PLANNED_UPDATES.md](../PLANNED_UPDATES.md) for full roadmap.
+
+## Useful Commands
+
+```bash
+# Check server health
+curl http://localhost:5000/api/health
+
+# Check PostGIS artifact count
+docker exec mapui-postgres psql -U mapui_user -d mapui -c "SELECT COUNT(*) FROM artifacts;"
+
+# View server logs
+docker exec mapui-server sh -c "cat /tmp/server.log"
+
+# Restart server with PostGIS
+docker exec mapui-server sh -c "pkill -f tsx || true"
+docker exec -d -e HOST=0.0.0.0 -e DATABASE_URL=postgresql://mapui_user:mapui_dev_password@postgres:5432/mapui \
+  mapui-server sh -c "cd /app && npx tsx server/index.ts > /tmp/server.log 2>&1"
+```

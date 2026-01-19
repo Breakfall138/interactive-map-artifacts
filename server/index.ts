@@ -5,6 +5,7 @@ import { createServer } from "http";
 import helmet from "helmet";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
+import { getStorage } from "./storage";
 
 const app = express();
 const httpServer = createServer(app);
@@ -90,7 +91,7 @@ export function log(message: string, source = "express") {
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
+  let capturedJsonResponse: Record<string, unknown> | undefined = undefined;
 
   const originalResJson = res.json;
   res.json = function (bodyJson, ...args) {
@@ -114,7 +115,13 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  await registerRoutes(httpServer, app);
+  // Initialize storage (PostgreSQL or in-memory fallback)
+  const storage = await getStorage();
+  const artifactCount = await storage.getArtifactCount();
+  log(`Storage initialized with ${artifactCount} artifacts`);
+
+  // Register routes with storage instance
+  await registerRoutes(httpServer, app, storage);
 
   app.use((err: Error & { status?: number; statusCode?: number }, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
@@ -154,8 +161,20 @@ app.use((req, res, next) => {
   });
 
   // Graceful shutdown handling
-  const shutdown = () => {
+  const shutdown = async () => {
     log("Shutting down gracefully...");
+
+    // Close database pool if using PostgreSQL
+    if (process.env.DATABASE_URL) {
+      try {
+        const { closePool } = await import("./db/config");
+        await closePool();
+        log("Database pool closed");
+      } catch (error) {
+        log(`Error closing database pool: ${error}`);
+      }
+    }
+
     httpServer.close(() => {
       log("Server closed");
       process.exit(0);

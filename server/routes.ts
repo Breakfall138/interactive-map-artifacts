@@ -1,21 +1,27 @@
 import type { Express } from "express";
-import { createServer, type Server } from "http";
-import { storage } from "./storage";
+import type { Server } from "http";
+import type { IStorage } from "./storage";
 import {
   boundsSchema,
   circleSelectionSchema,
   insertArtifactSchema,
 } from "@shared/schema";
-import { z } from "zod";
+import path from "path";
+import fs from "fs/promises";
 
 // Constants for query validation
 const MAX_LIMIT = 10000;
 const DEFAULT_LIMIT = 5000;
 
+// Tile storage path
+const TILE_STORAGE_PATH = process.env.TILE_STORAGE_PATH || "./tiles";
+
 export async function registerRoutes(
   httpServer: Server,
-  app: Express
+  app: Express,
+  storage: IStorage
 ): Promise<Server> {
+  // Viewport data endpoint with clustering
   app.get("/api/artifacts/viewport", async (req, res) => {
     try {
       const { north, south, east, west, zoom, limit } = req.query;
@@ -56,6 +62,7 @@ export async function registerRoutes(
     }
   });
 
+  // Get all artifacts or filter by bounds
   app.get("/api/artifacts", async (req, res) => {
     try {
       const { north, south, east, west } = req.query;
@@ -80,6 +87,18 @@ export async function registerRoutes(
     }
   });
 
+  // Get artifact count - MUST be before :id route
+  app.get("/api/artifacts/count", async (req, res) => {
+    try {
+      const count = await storage.getArtifactCount();
+      res.json({ count });
+    } catch (error) {
+      console.error("Error getting count:", error);
+      res.status(500).json({ error: "Failed to get count" });
+    }
+  });
+
+  // Get single artifact by ID
   app.get("/api/artifacts/:id", async (req, res) => {
     try {
       const artifact = await storage.getArtifact(req.params.id);
@@ -93,6 +112,7 @@ export async function registerRoutes(
     }
   });
 
+  // Create new artifact
   app.post("/api/artifacts", async (req, res) => {
     try {
       const validated = insertArtifactSchema.parse(req.body);
@@ -104,6 +124,7 @@ export async function registerRoutes(
     }
   });
 
+  // Query artifacts in circle selection
   app.post("/api/artifacts/query/circle", async (req, res) => {
     try {
       const circle = circleSelectionSchema.parse(req.body);
@@ -115,13 +136,105 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/artifacts/count", async (req, res) => {
+  // Tile serving endpoint
+  app.get("/tiles/:layer/:z/:x/:y.:format", async (req, res) => {
+    try {
+      const { layer, z, x, y, format } = req.params;
+
+      // Validate parameters
+      const zoom = parseInt(z);
+      const tileX = parseInt(x);
+      const tileY = parseInt(y);
+
+      if (isNaN(zoom) || isNaN(tileX) || isNaN(tileY)) {
+        return res.status(400).json({ error: "Invalid tile coordinates" });
+      }
+
+      if (zoom < 0 || zoom > 22) {
+        return res.status(400).json({ error: "Invalid zoom level" });
+      }
+
+      if (!["png", "webp", "jpg"].includes(format)) {
+        return res.status(400).json({ error: "Invalid tile format" });
+      }
+
+      // Validate layer name (prevent path traversal)
+      if (!/^[a-zA-Z0-9_-]+$/.test(layer)) {
+        return res.status(400).json({ error: "Invalid layer name" });
+      }
+
+      const tilePath = path.join(TILE_STORAGE_PATH, layer, z, x, `${y}.${format}`);
+
+      try {
+        await fs.access(tilePath);
+
+        const contentType: Record<string, string> = {
+          png: "image/png",
+          webp: "image/webp",
+          jpg: "image/jpeg",
+        };
+
+        res.set({
+          "Content-Type": contentType[format],
+          "Cache-Control": "public, max-age=86400",
+          "X-Tile-Coordinates": `${z}/${x}/${y}`,
+        });
+
+        const tileData = await fs.readFile(tilePath);
+        res.send(tileData);
+      } catch {
+        // Tile not found - return 204 No Content
+        res.status(204).end();
+      }
+    } catch (error) {
+      console.error("Error serving tile:", error);
+      res.status(500).json({ error: "Failed to serve tile" });
+    }
+  });
+
+  // Tile metadata/info endpoint
+  app.get("/api/tiles/info", async (_req, res) => {
+    try {
+      const metadataPath = path.join(TILE_STORAGE_PATH, "metadata.json");
+      try {
+        const metadata = await fs.readFile(metadataPath, "utf-8");
+        res.json(JSON.parse(metadata));
+      } catch {
+        // Return default metadata if file doesn't exist
+        res.json({
+          layers: ["basemap", "custom"],
+          formats: ["png", "webp"],
+          bounds: {
+            north: 42.0505,
+            south: 40.9509,
+            west: -73.7278,
+            east: -71.7872,
+          },
+          minZoom: 6,
+          maxZoom: 18,
+          description: "Connecticut / Eversource service territory",
+        });
+      }
+    } catch (error) {
+      console.error("Error getting tile info:", error);
+      res.status(500).json({ error: "Failed to get tile info" });
+    }
+  });
+
+  // Health check endpoint
+  app.get("/api/health", async (_req, res) => {
     try {
       const count = await storage.getArtifactCount();
-      res.json({ count });
+      res.json({
+        status: "healthy",
+        storage: process.env.DATABASE_URL ? "postgresql" : "memory",
+        artifactCount: count,
+      });
     } catch (error) {
-      console.error("Error getting count:", error);
-      res.status(500).json({ error: "Failed to get count" });
+      res.status(503).json({
+        status: "unhealthy",
+        error: "Storage unavailable",
+      });
     }
   });
 

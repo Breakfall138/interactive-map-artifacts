@@ -21,8 +21,8 @@ interface MapViewProps {
 
 export function MapView({
   isLoading = false,
-  initialCenter = [40.7128, -74.006],
-  initialZoom = 12,
+  initialCenter = [41.5, -72.7], // Connecticut center (Eversource territory)
+  initialZoom = 9, // State-level view
 }: MapViewProps) {
   return (
     <MapProvider>
