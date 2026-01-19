@@ -146,7 +146,8 @@ app.use((req, res, next) => {
   }
 
   // Bind to localhost in development for security, 0.0.0.0 in production for container compatibility
-  const host = process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1";
+  // Allow HOST env var override for container/testing scenarios
+  const host = process.env.HOST || (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1");
 
   httpServer.listen({ port, host }, () => {
     log(`serving on ${host}:${port}`);
