@@ -65,3 +65,27 @@ npm run dev
 - Rate limiting: 1000 req/15min per IP
 - Input validation on all endpoints
 - No plain-text password storage (auth schemas removed)
+
+## Recent Changes (Jan 2026)
+
+### Security Fixes
+- Added helmet.js, CORS, rate limiting middleware (`server/index.ts`)
+- Fixed XSS vulnerability - replaced `dangerouslySetInnerHTML` with safe React components (`HoverTooltip.tsx`, `MarkerLayer.tsx`)
+- Added geographic coordinate validation to Zod schemas (`shared/schema.ts`)
+- Added query parameter bounds validation (`server/routes.ts` - max limit 10,000)
+- Removed insecure plain-text User schema
+
+### Bug Fixes
+- Fixed memory leak in `MapInitializer.tsx` (setTimeout cleanup)
+- Fixed toast timeout (was 11 days, now 5 seconds) in `use-toast.ts`
+- Fixed race condition in `CircleDrawTool.tsx` (check isPending before mutations)
+- Fixed ESM compatibility in `server/static.ts` (__dirname)
+
+### Infrastructure
+- Added HOST env var for container deployments
+- Added graceful shutdown handling (SIGTERM/SIGINT)
+- Full package.json with all dependencies
+
+## Known Issues / Future Work
+
+See [PLANNED_UPDATES.md](../PLANNED_UPDATES.md) for roadmap.
