@@ -6,6 +6,11 @@ import {
   circleSelectionSchema,
   insertArtifactSchema,
 } from "@shared/schema";
+import { z } from "zod";
+
+// Constants for query validation
+const MAX_LIMIT = 10000;
+const DEFAULT_LIMIT = 5000;
 
 export async function registerRoutes(
   httpServer: Server,
@@ -29,7 +34,19 @@ export async function registerRoutes(
       });
 
       const zoomLevel = parseFloat(zoom as string);
-      const maxResults = limit ? parseInt(limit as string, 10) : 5000;
+      if (isNaN(zoomLevel) || zoomLevel < 0 || zoomLevel > 22) {
+        return res.status(400).json({ error: "Invalid zoom level" });
+      }
+
+      // Validate and constrain limit parameter
+      let maxResults = DEFAULT_LIMIT;
+      if (limit) {
+        const parsedLimit = parseInt(limit as string, 10);
+        if (isNaN(parsedLimit) || parsedLimit < 1) {
+          return res.status(400).json({ error: "Invalid limit parameter" });
+        }
+        maxResults = Math.min(parsedLimit, MAX_LIMIT);
+      }
 
       const viewportData = await storage.getViewportData(bounds, zoomLevel, maxResults);
       res.json(viewportData);

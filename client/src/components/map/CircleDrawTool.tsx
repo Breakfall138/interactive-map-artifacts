@@ -102,7 +102,7 @@ export function CircleDrawTool() {
 
       const radius = calculateRadius(startPointRef.current, [lat, lng]);
 
-      if (radius > 50) {
+      if (radius > 50 && !circleQueryMutation.isPending) {
         const selection: CircleSelection = {
           center: {
             lat: startPointRef.current[0],
@@ -118,7 +118,7 @@ export function CircleDrawTool() {
       startPointRef.current = null;
       setDrawingCircle(null);
     },
-    [isDrawing, drawingMode, map, calculateRadius, setLoading, circleQueryMutation]
+    [isDrawing, drawingMode, map, calculateRadius, setLoading, circleQueryMutation.mutate, circleQueryMutation.isPending]
   );
 
   useMapEvents({

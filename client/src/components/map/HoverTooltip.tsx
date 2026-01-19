@@ -5,6 +5,16 @@ interface HoverTooltipProps {
   artifact: Artifact;
 }
 
+// Sanitize text to prevent XSS - escapes HTML special characters
+function sanitizeText(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 export function HoverTooltip({ artifact }: HoverTooltipProps) {
   const categoryColor = getCategoryColor(artifact.category);
 
@@ -26,41 +36,54 @@ export function HoverTooltip({ artifact }: HoverTooltipProps) {
   );
 }
 
-export function createTooltipContent(artifact: Artifact): string {
+// Safe tooltip content component for use in Leaflet tooltips
+export function TooltipContent({ artifact }: HoverTooltipProps) {
   const categoryColor = getCategoryColor(artifact.category);
-  
-  return `
-    <div style="
-      background: hsl(var(--popover));
-      border: 1px solid hsl(var(--popover-border));
-      border-radius: 8px;
-      padding: 8px 12px;
-      max-width: 200px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    ">
-      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-        <div style="
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          background-color: ${categoryColor};
-          flex-shrink: 0;
-        "></div>
-        <span style="
-          font-weight: 500;
-          font-size: 14px;
-          color: hsl(var(--foreground));
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        ">${artifact.name}</span>
+
+  return (
+    <div
+      style={{
+        background: "hsl(var(--popover))",
+        border: "1px solid hsl(var(--popover-border))",
+        borderRadius: "8px",
+        padding: "8px 12px",
+        maxWidth: "200px",
+        boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+        <div
+          style={{
+            width: "8px",
+            height: "8px",
+            borderRadius: "50%",
+            backgroundColor: categoryColor,
+            flexShrink: 0,
+          }}
+        />
+        <span
+          style={{
+            fontWeight: 500,
+            fontSize: "14px",
+            color: "hsl(var(--foreground))",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {artifact.name}
+        </span>
       </div>
-      <p style="
-        font-size: 12px;
-        color: hsl(var(--muted-foreground));
-        text-transform: capitalize;
-        margin: 0;
-      ">${artifact.category}</p>
+      <p
+        style={{
+          fontSize: "12px",
+          color: "hsl(var(--muted-foreground))",
+          textTransform: "capitalize",
+          margin: 0,
+        }}
+      >
+        {artifact.category}
+      </p>
     </div>
-  `;
+  );
 }

@@ -5,7 +5,7 @@ import { useMapContext } from "./MapContext";
 import { useViewportArtifacts } from "@/hooks/useViewportArtifacts";
 import { createMarkerIcon, createClusterIcon } from "./MarkerIcon";
 import { MetadataPopup } from "./MetadataPopup";
-import { createTooltipContent } from "./HoverTooltip";
+import { TooltipContent } from "./HoverTooltip";
 import type { Artifact } from "@shared/schema";
 
 export function MarkerLayer() {
@@ -144,11 +144,7 @@ export function MarkerLayer() {
               opacity={1}
               className="custom-tooltip"
             >
-              <div
-                dangerouslySetInnerHTML={{
-                  __html: createTooltipContent(artifact),
-                }}
-              />
+              <TooltipContent artifact={artifact} />
             </Tooltip>
           </Marker>
         );

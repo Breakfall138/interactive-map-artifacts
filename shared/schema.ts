@@ -2,11 +2,11 @@ import { z } from "zod";
 
 export const artifactSchema = z.object({
   id: z.string(),
-  lat: z.number(),
-  lng: z.number(),
-  name: z.string(),
-  category: z.string(),
-  description: z.string().optional(),
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
+  name: z.string().min(1).max(500),
+  category: z.string().min(1).max(100),
+  description: z.string().max(5000).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
   createdAt: z.string().optional(),
 });
@@ -17,20 +17,23 @@ export const insertArtifactSchema = artifactSchema.omit({ id: true });
 export type InsertArtifact = z.infer<typeof insertArtifactSchema>;
 
 export const boundsSchema = z.object({
-  north: z.number(),
-  south: z.number(),
-  east: z.number(),
-  west: z.number(),
-});
+  north: z.number().min(-90).max(90),
+  south: z.number().min(-90).max(90),
+  east: z.number().min(-180).max(180),
+  west: z.number().min(-180).max(180),
+}).refine(
+  (data) => data.north >= data.south,
+  { message: "North must be greater than or equal to south" }
+);
 
 export type Bounds = z.infer<typeof boundsSchema>;
 
 export const circleSelectionSchema = z.object({
   center: z.object({
-    lat: z.number(),
-    lng: z.number(),
+    lat: z.number().min(-90).max(90),
+    lng: z.number().min(-180).max(180),
   }),
-  radius: z.number(),
+  radius: z.number().positive().max(40075000), // Max radius is Earth's circumference
 });
 
 export type CircleSelection = z.infer<typeof circleSelectionSchema>;
@@ -75,16 +78,9 @@ export const viewportResponseSchema = z.object({
 
 export type ViewportResponse = z.infer<typeof viewportResponseSchema>;
 
-export const users = {
-  id: "",
-  username: "",
-  password: "",
-};
-
-export const insertUserSchema = z.object({
-  username: z.string(),
-  password: z.string(),
-});
-
-export type InsertUser = z.infer<typeof insertUserSchema>;
-export type User = { id: string; username: string; password: string };
+// Note: User authentication schemas have been removed.
+// If authentication is needed, implement properly with:
+// - Password hashing (bcrypt/argon2)
+// - Secure session management
+// - Rate limiting for login attempts
+// - Proper validation (password complexity, etc.)

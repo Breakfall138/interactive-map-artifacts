@@ -6,6 +6,7 @@ export function MapInitializer() {
   const map = useMap();
   const { updateBounds, updateZoom } = useMapContext();
   const initializedRef = useRef(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (initializedRef.current) return;
@@ -32,10 +33,18 @@ export function MapInitializer() {
     };
 
     map.whenReady(() => {
-      setTimeout(() => {
+      timeoutRef.current = setTimeout(() => {
         initializeBounds();
       }, 100);
     });
+
+    // Cleanup timeout on unmount
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    };
   }, [map, updateBounds, updateZoom]);
 
   return null;
