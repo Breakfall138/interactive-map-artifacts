@@ -7,7 +7,7 @@ import type { CircleSelection, AggregationResult } from "@shared/schema";
 
 export function CircleDrawTool() {
   const map = useMap();
-  const { drawingMode, finishDrawing, spatialIndex, setLoading } = useMapContext();
+  const { drawingMode, finishDrawing, setLoading } = useMapContext();
 
   const [drawingCircle, setDrawingCircle] = useState<{
     center: [number, number];
@@ -33,11 +33,12 @@ export function CircleDrawTool() {
       if (data.artifacts && data.artifacts.length >= 0) {
         finishDrawing(selection, data.artifacts);
       }
+      setLoading(false);
     },
-    onError: (error, selection) => {
-      console.error("Circle query failed, falling back to client-side:", error);
-      const selectedArtifacts = spatialIndex.queryCircle(selection);
-      finishDrawing(selection, selectedArtifacts);
+    onError: (error) => {
+      console.error("Circle query failed:", error);
+      setLoading(false);
+      // Could show an error toast here
     },
   });
 

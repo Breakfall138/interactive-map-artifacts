@@ -4,8 +4,18 @@ import type {
   Bounds,
   CircleSelection,
   AggregationResult,
+  ViewportResponse,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
+import RBush from "rbush";
+
+interface RBushItem {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+  artifact: Artifact;
+}
 
 export interface IStorage {
   getAllArtifacts(): Promise<Artifact[]>;
@@ -13,6 +23,7 @@ export interface IStorage {
   getArtifactsInBounds(bounds: Bounds): Promise<Artifact[]>;
   getArtifactsInCircle(circle: CircleSelection): Promise<Artifact[]>;
   getAggregation(circle: CircleSelection): Promise<AggregationResult>;
+  getViewportData(bounds: Bounds, zoom: number, limit: number): Promise<ViewportResponse>;
   createArtifact(artifact: InsertArtifact): Promise<Artifact>;
   createManyArtifacts(artifacts: InsertArtifact[]): Promise<Artifact[]>;
   getArtifactCount(): Promise<number>;
@@ -20,9 +31,11 @@ export interface IStorage {
 
 export class MemStorage implements IStorage {
   private artifacts: Map<string, Artifact>;
+  private spatialIndex: RBush<RBushItem>;
 
   constructor() {
     this.artifacts = new Map();
+    this.spatialIndex = new RBush<RBushItem>();
     this.seedData();
   }
 
@@ -159,7 +172,19 @@ export class MemStorage implements IStorage {
       this.artifacts.set(artifact.id, artifact);
     }
 
+    this.buildSpatialIndex();
     console.log(`Seeded ${this.artifacts.size} artifacts`);
+  }
+
+  private buildSpatialIndex() {
+    const items: RBushItem[] = Array.from(this.artifacts.values()).map((artifact) => ({
+      minX: artifact.lng,
+      minY: artifact.lat,
+      maxX: artifact.lng,
+      maxY: artifact.lat,
+      artifact,
+    }));
+    this.spatialIndex.load(items);
   }
 
   async getAllArtifacts(): Promise<Artifact[]> {
@@ -171,36 +196,39 @@ export class MemStorage implements IStorage {
   }
 
   async getArtifactsInBounds(bounds: Bounds): Promise<Artifact[]> {
-    return Array.from(this.artifacts.values()).filter(
-      (artifact) =>
-        artifact.lat >= bounds.south &&
-        artifact.lat <= bounds.north &&
-        artifact.lng >= bounds.west &&
-        artifact.lng <= bounds.east
-    );
+    const results = this.spatialIndex.search({
+      minX: bounds.west,
+      minY: bounds.south,
+      maxX: bounds.east,
+      maxY: bounds.north,
+    });
+    return results.map((item) => item.artifact);
   }
 
   async getArtifactsInCircle(circle: CircleSelection): Promise<Artifact[]> {
     const { center, radius } = circle;
     const radiusInDegrees = radius / 111320;
 
-    const candidates = Array.from(this.artifacts.values()).filter(
-      (artifact) =>
-        artifact.lat >= center.lat - radiusInDegrees &&
-        artifact.lat <= center.lat + radiusInDegrees &&
-        artifact.lng >= center.lng - radiusInDegrees &&
-        artifact.lng <= center.lng + radiusInDegrees
-    );
-
-    return candidates.filter((artifact) => {
-      const distance = this.haversineDistance(
-        center.lat,
-        center.lng,
-        artifact.lat,
-        artifact.lng
-      );
-      return distance <= radius;
+    // Use spatial index for initial bounding box query
+    const candidateItems = this.spatialIndex.search({
+      minX: center.lng - radiusInDegrees,
+      minY: center.lat - radiusInDegrees,
+      maxX: center.lng + radiusInDegrees,
+      maxY: center.lat + radiusInDegrees,
     });
+
+    // Filter by actual circle distance
+    return candidateItems
+      .map((item) => item.artifact)
+      .filter((artifact) => {
+        const distance = this.haversineDistance(
+          center.lat,
+          center.lng,
+          artifact.lat,
+          artifact.lng
+        );
+        return distance <= radius;
+      });
   }
 
   async getAggregation(circle: CircleSelection): Promise<AggregationResult> {
@@ -226,6 +254,16 @@ export class MemStorage implements IStorage {
       createdAt: new Date().toISOString(),
     };
     this.artifacts.set(id, artifact);
+
+    // Add to spatial index
+    this.spatialIndex.insert({
+      minX: artifact.lng,
+      minY: artifact.lat,
+      maxX: artifact.lng,
+      maxY: artifact.lat,
+      artifact,
+    });
+
     return artifact;
   }
 
@@ -240,6 +278,107 @@ export class MemStorage implements IStorage {
 
   async getArtifactCount(): Promise<number> {
     return this.artifacts.size;
+  }
+
+  async getViewportData(
+    bounds: Bounds,
+    zoom: number,
+    limit: number
+  ): Promise<ViewportResponse> {
+    // Get artifacts in viewport using spatial index
+    const artifacts = await this.getArtifactsInBounds(bounds);
+    const total = artifacts.length;
+
+    // At high zoom levels (>= 13), return individual artifacts
+    if (zoom >= 13) {
+      const truncated = artifacts.length > limit;
+      const singles = truncated ? artifacts.slice(0, limit) : artifacts;
+      return {
+        clusters: [],
+        singles,
+        total,
+        truncated,
+      };
+    }
+
+    // At lower zoom levels, perform server-side clustering
+    const gridSize = this.getClusterGridSize(zoom);
+    const grid = new Map<string, Artifact[]>();
+
+    // Group artifacts into grid cells
+    artifacts.forEach((artifact) => {
+      const cellX = Math.floor(artifact.lng / gridSize);
+      const cellY = Math.floor(artifact.lat / gridSize);
+      const key = `${cellX}:${cellY}`;
+
+      if (!grid.has(key)) {
+        grid.set(key, []);
+      }
+      grid.get(key)!.push(artifact);
+    });
+
+    const clusters: Array<{ id: string; lat: number; lng: number; count: number }> = [];
+    const singles: Artifact[] = [];
+
+    // Convert grid cells to clusters or singles
+    grid.forEach((cellArtifacts, key) => {
+      if (cellArtifacts.length > 3) {
+        // Create cluster
+        const centerLat =
+          cellArtifacts.reduce((sum, a) => sum + a.lat, 0) / cellArtifacts.length;
+        const centerLng =
+          cellArtifacts.reduce((sum, a) => sum + a.lng, 0) / cellArtifacts.length;
+
+        clusters.push({
+          id: `cluster-${key}`,
+          lat: centerLat,
+          lng: centerLng,
+          count: cellArtifacts.length,
+        });
+      } else {
+        // Add as individual markers
+        singles.push(...cellArtifacts);
+      }
+    });
+
+    // Apply limit to the combined results
+    const combinedCount = clusters.length + singles.length;
+    const truncated = combinedCount > limit;
+
+    if (truncated) {
+      // Prioritize clusters over singles when truncating
+      if (clusters.length <= limit) {
+        const remainingLimit = limit - clusters.length;
+        return {
+          clusters,
+          singles: singles.slice(0, remainingLimit),
+          total,
+          truncated: true,
+        };
+      } else {
+        return {
+          clusters: clusters.slice(0, limit),
+          singles: [],
+          total,
+          truncated: true,
+        };
+      }
+    }
+
+    return {
+      clusters,
+      singles,
+      total,
+      truncated: false,
+    };
+  }
+
+  private getClusterGridSize(zoom: number): number {
+    if (zoom <= 6) return 2;
+    if (zoom <= 8) return 1;
+    if (zoom <= 10) return 0.5;
+    if (zoom <= 12) return 0.1;
+    return 0.05;
   }
 
   private haversineDistance(

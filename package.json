@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "@types/rbush": "^4.0.0",
+    "rbush": "^4.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.9"
+  }
+}

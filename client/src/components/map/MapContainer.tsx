@@ -12,23 +12,20 @@ import { SelectionCircle } from "./SelectionCircle";
 import { SelectionResultsPanel } from "./SelectionResultsPanel";
 import { MapLoadingState } from "./MapLoadingState";
 import { MapInitializer } from "./MapInitializer";
-import type { Artifact } from "@shared/schema";
 
 interface MapViewProps {
-  artifacts: Artifact[];
   isLoading?: boolean;
   initialCenter?: [number, number];
   initialZoom?: number;
 }
 
 export function MapView({
-  artifacts,
   isLoading = false,
   initialCenter = [40.7128, -74.006],
   initialZoom = 12,
 }: MapViewProps) {
   return (
-    <MapProvider artifacts={artifacts}>
+    <MapProvider>
       <div className="relative w-full h-full" data-testid="map-container">
         {isLoading ? (
           <MapLoadingState />

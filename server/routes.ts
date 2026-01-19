@@ -11,6 +11,34 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  app.get("/api/artifacts/viewport", async (req, res) => {
+    try {
+      const { north, south, east, west, zoom, limit } = req.query;
+
+      if (!north || !south || !east || !west || !zoom) {
+        return res.status(400).json({
+          error: "Missing required parameters: north, south, east, west, zoom",
+        });
+      }
+
+      const bounds = boundsSchema.parse({
+        north: parseFloat(north as string),
+        south: parseFloat(south as string),
+        east: parseFloat(east as string),
+        west: parseFloat(west as string),
+      });
+
+      const zoomLevel = parseFloat(zoom as string);
+      const maxResults = limit ? parseInt(limit as string, 10) : 5000;
+
+      const viewportData = await storage.getViewportData(bounds, zoomLevel, maxResults);
+      res.json(viewportData);
+    } catch (error) {
+      console.error("Error fetching viewport data:", error);
+      res.status(500).json({ error: "Failed to fetch viewport data" });
+    }
+  });
+
   app.get("/api/artifacts", async (req, res) => {
     try {
       const { north, south, east, west } = req.query;

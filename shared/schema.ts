@@ -57,6 +57,24 @@ export const aggregationResultSchema = z.object({
 
 export type AggregationResult = z.infer<typeof aggregationResultSchema>;
 
+export const clusterDataSchema = z.object({
+  id: z.string(),
+  lat: z.number(),
+  lng: z.number(),
+  count: z.number(),
+});
+
+export type ClusterData = z.infer<typeof clusterDataSchema>;
+
+export const viewportResponseSchema = z.object({
+  clusters: z.array(clusterDataSchema),
+  singles: z.array(artifactSchema),
+  total: z.number(),
+  truncated: z.boolean(),
+});
+
+export type ViewportResponse = z.infer<typeof viewportResponseSchema>;
+
 export const users = {
   id: "",
   username: "",

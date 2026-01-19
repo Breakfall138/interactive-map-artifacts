@@ -2,28 +2,36 @@ import { useMemo, useState, useCallback } from "react";
 import { Marker, Popup, Tooltip, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import { useMapContext } from "./MapContext";
-import { useMapMarkers } from "@/hooks/useMapMarkers";
+import { useViewportArtifacts } from "@/hooks/useViewportArtifacts";
 import { createMarkerIcon, createClusterIcon } from "./MarkerIcon";
 import { MetadataPopup } from "./MetadataPopup";
 import { createTooltipContent } from "./HoverTooltip";
 import type { Artifact } from "@shared/schema";
-import type { ClusterData } from "@/lib/mapTypes";
 
 export function MarkerLayer() {
   const map = useMap();
-  const { artifacts, mapState, selectionState, updateBounds, updateZoom } =
+  const { mapState, selectionState, updateBounds, updateZoom } =
     useMapContext();
   const { bounds, zoom } = mapState;
   const { selectedArtifacts } = selectionState;
 
   const [selectedMarker, setSelectedMarker] = useState<Artifact | null>(null);
 
+  // Fetch viewport data with server-side clustering
+  const { data, isLoading, error } = useViewportArtifacts({
+    bounds,
+    zoom,
+    limit: 5000,
+  });
+
+  const clusters = data?.clusters || [];
+  const singles = data?.singles || [];
+  const truncated = data?.truncated || false;
+
   const selectedIds = useMemo(
     () => new Set(selectedArtifacts.map((a) => a.id)),
     [selectedArtifacts]
   );
-
-  const { clusters, singles } = useMapMarkers(artifacts, bounds, zoom);
 
   useMapEvents({
     moveend(e) {
@@ -52,30 +60,55 @@ export function MarkerLayer() {
   }, []);
 
   const handleClusterClick = useCallback(
-    (cluster: ClusterData) => {
-      if (cluster.artifacts && cluster.artifacts.length > 0) {
-        const latLngs = cluster.artifacts.map(
-          (a) => [a.lat, a.lng] as [number, number]
-        );
-        const clusterBounds = L.latLngBounds(latLngs);
-        
-        if (clusterBounds.isValid()) {
-          map.fitBounds(clusterBounds, { 
-            padding: [50, 50], 
-            maxZoom: Math.min(map.getZoom() + 3, 18) 
-          });
-        } else {
-          map.setView([cluster.lat, cluster.lng], map.getZoom() + 2);
-        }
-      } else {
-        map.setView([cluster.lat, cluster.lng], map.getZoom() + 2);
-      }
+    (cluster: { id: string; lat: number; lng: number; count: number }) => {
+      // Zoom in to the cluster location
+      map.setView([cluster.lat, cluster.lng], Math.min(map.getZoom() + 2, 18));
     },
     [map]
   );
 
+  // Show loading indicator
+  if (isLoading && !data) {
+    return (
+      <div className="absolute top-4 right-4 z-[1000] bg-white rounded-lg shadow-lg p-3">
+        <div className="flex items-center gap-2">
+          <div className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full" />
+          <span className="text-sm text-gray-700">Loading map data...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error message
+  if (error) {
+    return (
+      <div className="absolute top-4 right-4 z-[1000] bg-red-50 border border-red-200 rounded-lg shadow-lg p-3">
+        <span className="text-sm text-red-700">Failed to load map data</span>
+      </div>
+    );
+  }
+
   return (
     <>
+      {/* Truncation warning */}
+      {truncated && (
+        <div className="absolute top-4 right-4 z-[1000] bg-amber-50 border border-amber-200 rounded-lg shadow-lg p-3">
+          <span className="text-sm text-amber-800">
+            Showing limited results. Zoom in for more detail.
+          </span>
+        </div>
+      )}
+
+      {/* Loading indicator while fetching in background */}
+      {isLoading && data && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-blue-50 border border-blue-200 rounded-lg shadow-lg px-3 py-2">
+          <div className="flex items-center gap-2">
+            <div className="animate-spin h-3 w-3 border-2 border-blue-600 border-t-transparent rounded-full" />
+            <span className="text-xs text-blue-700">Updating...</span>
+          </div>
+        </div>
+      )}
+
       {clusters.map((cluster) => (
         <Marker
           key={cluster.id}
