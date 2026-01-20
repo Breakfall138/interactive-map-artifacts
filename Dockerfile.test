@@ -1,0 +1,15 @@
+# Test container for MapUI
+# Runs unit tests and regression tests in isolation
+
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copy all files (package.json may be newer than lock file)
+COPY . .
+
+# Install dependencies (regenerates lock file if needed)
+RUN npm install
+
+# Default command runs all tests
+CMD ["npm", "test"]

@@ -376,3 +376,81 @@ docker exec mapui-server sh -c "cat /tmp/server.log"
 ```bash
 docker exec mapui-postgres psql -U mapui_user -d mapui -c "CREATE EXTENSION IF NOT EXISTS postgis;"
 ```
+
+---
+
+## Testing
+
+MapUI includes a comprehensive test suite with 148 tests covering schemas, storage, routes, and React hooks.
+
+### Quick Test Commands
+
+```bash
+# Run all tests locally
+npm test
+
+# Run tests in Docker container
+docker compose --profile test run --rm test
+
+# Run with coverage report
+docker compose --profile test run --rm test npm run test:coverage
+
+# Run tests in watch mode (local)
+npm run test:watch
+
+# Interactive test UI (local)
+npm run test:ui
+```
+
+### Test Categories
+
+| Category | Description | Count |
+|----------|-------------|-------|
+| Schema validation | Zod schema tests for all data types | 46 |
+| Storage unit tests | MemStorage CRUD, spatial queries, clustering | 31 |
+| API routes | Integration tests for all endpoints | 31 |
+| Storage factory | Singleton and fallback behavior | 6 |
+| Client hooks | useArtifactFilter, useViewportArtifacts | 34 |
+
+### Docker Test Container
+
+The test container runs in isolation with its own Node.js environment:
+
+```bash
+# Build test container
+docker compose --profile test build test
+
+# Run tests
+docker compose --profile test run --rm test
+
+# Run specific test file
+docker compose --profile test run --rm test npm test -- tests/server/routes.test.ts
+```
+
+### Integration Tests with Database
+
+For full integration tests against PostGIS:
+
+```bash
+docker compose --profile test-integration run --rm test-integration
+```
+
+### CI/CD Integration
+
+Example GitHub Actions workflow:
+
+```yaml
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Tests
+        run: docker compose --profile test run --rm test
+
+      - name: Run Coverage
+        run: docker compose --profile test run --rm test npm run test:coverage
+```
+
+For detailed testing documentation, see [TESTING.md](./TESTING.md).

@@ -7,6 +7,7 @@ MapUI is an interactive map application for visualizing and querying geospatial 
 ## Key Documentation
 
 - [Deployment Guide](../docs/DEPLOYMENT.md) - Docker setup with PostGIS
+- [Testing Guide](../docs/TESTING.md) - Test strategy and running tests
 - [Planned Updates](../PLANNED_UPDATES.md) - Roadmap and enhancement plans
 
 ## Tech Stack
@@ -46,9 +47,16 @@ MapUI/
 │   └── init/
 │       └── 01_init.sh    # Docker init script
 ├── tiles/            # Raster tile storage
+├── tests/            # Test suites
+│   ├── fixtures/     # Test data generators
+│   ├── shared/       # Schema tests
+│   ├── server/       # Storage and route tests
+│   └── client/       # React hook tests
 ├── docs/             # Documentation
 ├── docker-compose.yml # Full stack orchestration
 ├── Dockerfile        # App container definition
+├── Dockerfile.test   # Test container definition
+├── vitest.config.ts  # Test configuration
 └── .env.example      # Environment template
 ```
 
@@ -163,10 +171,30 @@ Without `DATABASE_URL`, the app uses in-memory storage with CT seed data.
 - Circle selection queries against PostGIS
 
 ### Technical Debt
-- Add unit tests for `PostgresStorage` class
+- Add unit tests for `PostgresStorage` class (requires database mocking)
 - Add E2E tests with Playwright
 - Improve error boundaries in React components
 - Add structured logging
+
+## Testing
+
+**148 tests** covering schemas, storage, routes, and React hooks.
+
+```bash
+# Run all tests
+npm test
+
+# Run in Docker container
+docker compose --profile test run --rm test
+
+# Run with coverage
+npm run test:coverage
+
+# Watch mode
+npm run test:watch
+```
+
+See [Testing Guide](../docs/TESTING.md) for full documentation.
 
 ### Future Enhancements
 See [PLANNED_UPDATES.md](../PLANNED_UPDATES.md) for full roadmap.

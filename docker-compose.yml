@@ -46,6 +46,36 @@ services:
     networks:
       - mapui-network
 
+  # Test runner container
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: mapui-test
+    environment:
+      NODE_ENV: test
+    profiles:
+      - test
+    networks:
+      - mapui-network
+
+  # Test runner with database (for integration tests)
+  test-integration:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: mapui-test-integration
+    environment:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://mapui_user:${POSTGRES_PASSWORD:-mapui_dev_password}@postgres:5432/mapui_test
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - test-integration
+    networks:
+      - mapui-network
+
 volumes:
   postgres_data:
     driver: local
