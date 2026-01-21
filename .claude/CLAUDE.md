@@ -8,6 +8,7 @@ MapUI is an interactive map application for visualizing and querying geospatial 
 
 - [Deployment Guide](../docs/DEPLOYMENT.md) - Docker setup with PostGIS
 - [Testing Guide](../docs/TESTING.md) - Test strategy and running tests
+- [Logging Design](../docs/LOGGING.md) - Adapter pattern logging infrastructure
 - [Planned Updates](../PLANNED_UPDATES.md) - Roadmap and enhancement plans
 
 ## Tech Stack

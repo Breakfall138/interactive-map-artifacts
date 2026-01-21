@@ -68,7 +68,7 @@ This document outlines planned improvements and new features for the Interactive
 - Add E2E test suite with Playwright
 - Improve TypeScript strict mode compliance
 - Add error boundary components
-- Implement proper logging system
+- Implement proper logging system - See [Logging Infrastructure](docs/LOGGING.md)
 
 ## API Improvements
 
