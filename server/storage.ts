@@ -31,6 +31,9 @@ let storageInstance: IStorage | null = null;
  * - Otherwise: uses in-memory storage with RBush spatial index
  */
 export async function createStorage(): Promise<IStorage> {
+  const { getLogger } = await import("./logging/logger");
+  const logger = await getLogger();
+
   if (process.env.DATABASE_URL) {
     try {
       const { PostgresStorage } = await import("./db/postgresStorage");
@@ -46,17 +49,17 @@ export async function createStorage(): Promise<IStorage> {
         throw new Error("PostGIS extension not available");
       }
 
-      console.log("Using PostgreSQL/PostGIS storage backend");
+      logger.info("Using PostgreSQL/PostGIS storage backend", { source: "storage" });
       return new PostgresStorage();
     } catch (error) {
-      console.error("Failed to initialize PostgreSQL storage:", error);
-      console.log("Falling back to in-memory storage");
+      logger.error("Failed to initialize PostgreSQL storage", error as Error, { source: "storage" });
+      logger.info("Falling back to in-memory storage", { source: "storage" });
     }
   }
 
   // Fallback to in-memory storage
   const { MemStorage } = await import("./memStorage");
-  console.log("Using in-memory storage backend");
+  logger.info("Using in-memory storage backend", { source: "storage" });
   return new MemStorage();
 }
 

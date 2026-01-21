@@ -140,7 +140,11 @@ export class MemStorage implements IStorage {
     }
 
     this.buildSpatialIndex();
-    console.log(`Seeded ${this.artifacts.size} artifacts (in-memory)`);
+    // Log seeding info - use dynamic import to avoid initialization issues
+    import("./logging/logger").then(async ({ getLogger }) => {
+      const logger = await getLogger();
+      logger.info(`Seeded ${this.artifacts.size} artifacts (in-memory)`, { source: "storage" });
+    });
   }
 
   private buildSpatialIndex() {

@@ -67,6 +67,9 @@
     "pg": "^8.13.1",
     "zod": "^3.23.8"
   },
+  "optionalDependencies": {
+    "applicationinsights": "^3.4.0"
+  },
   "devDependencies": {
     "@testing-library/react": "^14.2.1",
     "@testing-library/jest-dom": "^6.4.2",

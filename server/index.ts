@@ -6,6 +6,9 @@ import helmet from "helmet";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
 import { getStorage } from "./storage";
+import { getLogger } from "./logging/logger";
+import { createRequestLogger } from "./logging/middleware/requestLogger";
+import type { ILogger } from "./logging/types";
 
 const app = express();
 const httpServer = createServer(app);
@@ -77,60 +80,38 @@ app.use(
 
 app.use(express.urlencoded({ extended: false, limit: "10mb" }));
 
-export function log(message: string, source = "express") {
-  const formattedTime = new Date().toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
-
-  console.log(`${formattedTime} [${source}] ${message}`);
-}
-
-app.use((req, res, next) => {
-  const start = Date.now();
-  const path = req.path;
-  let capturedJsonResponse: Record<string, unknown> | undefined = undefined;
-
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
-
-  res.on("finish", () => {
-    const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-
-      log(logLine);
-    }
-  });
-
-  next();
-});
-
 (async () => {
+  // Initialize logger FIRST (before storage and other components)
+  const logger = await getLogger();
+  logger.info("Starting MapUI server", { source: "startup" });
+
+  // Add request logging middleware (after body parsing, before routes)
+  app.use(createRequestLogger(logger));
+
   // Initialize storage (PostgreSQL or in-memory fallback)
   const storage = await getStorage();
   const artifactCount = await storage.getArtifactCount();
-  log(`Storage initialized with ${artifactCount} artifacts`);
+  logger.info(`Storage initialized with ${artifactCount} artifacts`, {
+    source: "storage",
+    metadata: { count: artifactCount },
+  });
 
   // Register routes with storage instance
   await registerRoutes(httpServer, app, storage);
 
-  app.use((err: Error & { status?: number; statusCode?: number }, _req: Request, res: Response, _next: NextFunction) => {
+  // Error handler
+  app.use((err: Error & { status?: number; statusCode?: number }, req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     // Don't expose internal error details in production
     const message = process.env.NODE_ENV === "production" && status === 500
       ? "Internal Server Error"
       : err.message || "Internal Server Error";
 
-    log(`Error: ${err.message}`, "error");
+    // Use request logger if available, otherwise use main logger
+    const reqLogger: ILogger = req.logger || logger;
+    reqLogger.error(`Request error: ${err.message}`, err, {
+      operation: `${req.method} ${req.path}`,
+    });
     res.status(status).json({ message });
   });
 
@@ -148,7 +129,7 @@ app.use((req, res, next) => {
   const portStr = process.env.PORT || "5000";
   const port = parseInt(portStr, 10);
   if (isNaN(port) || port < 1 || port > 65535) {
-    console.error(`Invalid PORT value: ${portStr}`);
+    logger.error(`Invalid PORT value: ${portStr}`);
     process.exit(1);
   }
 
@@ -157,32 +138,33 @@ app.use((req, res, next) => {
   const host = process.env.HOST || (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1");
 
   httpServer.listen({ port, host }, () => {
-    log(`serving on ${host}:${port}`);
+    logger.info(`Server listening on ${host}:${port}`, { source: "startup" });
   });
 
   // Graceful shutdown handling
   const shutdown = async () => {
-    log("Shutting down gracefully...");
+    logger.info("Shutting down gracefully...", { source: "shutdown" });
 
     // Close database pool if using PostgreSQL
     if (process.env.DATABASE_URL) {
       try {
         const { closePool } = await import("./db/config");
         await closePool();
-        log("Database pool closed");
+        logger.info("Database pool closed", { source: "shutdown" });
       } catch (error) {
-        log(`Error closing database pool: ${error}`);
+        logger.error("Error closing database pool", error as Error, { source: "shutdown" });
       }
     }
 
+    // Flush and close logger
+    await logger.shutdown();
+
     httpServer.close(() => {
-      log("Server closed");
       process.exit(0);
     });
 
     // Force shutdown after 10 seconds
     setTimeout(() => {
-      log("Forcing shutdown");
       process.exit(1);
     }, 10000);
   };

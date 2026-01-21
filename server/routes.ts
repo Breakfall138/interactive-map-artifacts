@@ -57,7 +57,7 @@ export async function registerRoutes(
       const viewportData = await storage.getViewportData(bounds, zoomLevel, maxResults);
       res.json(viewportData);
     } catch (error) {
-      console.error("Error fetching viewport data:", error);
+      req.logger.error("Error fetching viewport data", error as Error);
       res.status(500).json({ error: "Failed to fetch viewport data" });
     }
   });
@@ -82,7 +82,7 @@ export async function registerRoutes(
       const artifacts = await storage.getAllArtifacts();
       res.json(artifacts);
     } catch (error) {
-      console.error("Error fetching artifacts:", error);
+      req.logger.error("Error fetching artifacts", error as Error);
       res.status(500).json({ error: "Failed to fetch artifacts" });
     }
   });
@@ -93,7 +93,7 @@ export async function registerRoutes(
       const count = await storage.getArtifactCount();
       res.json({ count });
     } catch (error) {
-      console.error("Error getting count:", error);
+      req.logger.error("Error getting count", error as Error);
       res.status(500).json({ error: "Failed to get count" });
     }
   });
@@ -107,7 +107,7 @@ export async function registerRoutes(
       }
       res.json(artifact);
     } catch (error) {
-      console.error("Error fetching artifact:", error);
+      req.logger.error("Error fetching artifact", error as Error);
       res.status(500).json({ error: "Failed to fetch artifact" });
     }
   });
@@ -119,7 +119,7 @@ export async function registerRoutes(
       const artifact = await storage.createArtifact(validated);
       res.status(201).json(artifact);
     } catch (error) {
-      console.error("Error creating artifact:", error);
+      req.logger.error("Error creating artifact", error as Error);
       res.status(400).json({ error: "Invalid artifact data" });
     }
   });
@@ -131,7 +131,7 @@ export async function registerRoutes(
       const aggregation = await storage.getAggregation(circle);
       res.json(aggregation);
     } catch (error) {
-      console.error("Error querying circle:", error);
+      req.logger.error("Error querying circle", error as Error);
       res.status(400).json({ error: "Invalid circle query" });
     }
   });
@@ -187,7 +187,7 @@ export async function registerRoutes(
         res.status(204).end();
       }
     } catch (error) {
-      console.error("Error serving tile:", error);
+      req.logger.error("Error serving tile", error as Error);
       res.status(500).json({ error: "Failed to serve tile" });
     }
   });
@@ -216,7 +216,7 @@ export async function registerRoutes(
         });
       }
     } catch (error) {
-      console.error("Error getting tile info:", error);
+      req.logger.error("Error getting tile info", error as Error);
       res.status(500).json({ error: "Failed to get tile info" });
     }
   });

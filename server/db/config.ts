@@ -23,9 +23,11 @@ const poolConfig: PoolConfig = {
 
 export const pool = new Pool(poolConfig);
 
-// Handle pool errors
-pool.on("error", (err) => {
-  console.error("Unexpected error on idle PostgreSQL client", err);
+// Handle pool errors - use lazy logger import to avoid circular dependency
+pool.on("error", async (err) => {
+  const { getLogger } = await import("../logging/logger");
+  const logger = await getLogger();
+  logger.error("Unexpected error on idle PostgreSQL client", err, { source: "postgres" });
 });
 
 /**
@@ -33,7 +35,6 @@ pool.on("error", (err) => {
  */
 export async function closePool(): Promise<void> {
   await pool.end();
-  console.log("PostgreSQL connection pool closed");
 }
 
 /**
@@ -46,7 +47,9 @@ export async function checkConnection(): Promise<boolean> {
     client.release();
     return true;
   } catch (error) {
-    console.error("Database connection check failed:", error);
+    const { getLogger } = await import("../logging/logger");
+    const logger = await getLogger();
+    logger.error("Database connection check failed", error as Error, { source: "postgres" });
     return false;
   }
 }
@@ -59,10 +62,14 @@ export async function checkPostGIS(): Promise<boolean> {
     const result = await pool.query(
       "SELECT PostGIS_Version() as version"
     );
-    console.log(`PostGIS version: ${result.rows[0].version}`);
+    const { getLogger } = await import("../logging/logger");
+    const logger = await getLogger();
+    logger.info(`PostGIS version: ${result.rows[0].version}`, { source: "postgres" });
     return true;
   } catch (error) {
-    console.error("PostGIS not available:", error);
+    const { getLogger } = await import("../logging/logger");
+    const logger = await getLogger();
+    logger.error("PostGIS not available", error as Error, { source: "postgres" });
     return false;
   }
 }
