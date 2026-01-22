@@ -32,7 +32,7 @@ export function MapControls() {
 
   return (
     <div
-      className="absolute top-4 right-4 z-[1000] flex flex-col gap-2"
+      className="absolute top-20 right-4 z-[1000] flex flex-col gap-2"
       data-testid="map-controls"
     >
       <Button

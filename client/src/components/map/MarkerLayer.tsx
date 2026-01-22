@@ -10,18 +10,23 @@ import type { Artifact } from "@shared/schema";
 
 export function MarkerLayer() {
   const map = useMap();
-  const { mapState, selectionState, updateBounds, updateZoom } =
+  const { mapState, selectionState, layerState, updateBounds, updateZoom } =
     useMapContext();
   const { bounds, zoom } = mapState;
   const { selectedArtifacts } = selectionState;
+  const { getVisibleLayerIds } = layerState;
 
   const [selectedMarker, setSelectedMarker] = useState<Artifact | null>(null);
 
-  // Fetch viewport data with server-side clustering
+  // Get visible layers for filtering
+  const visibleLayers = getVisibleLayerIds();
+
+  // Fetch viewport data with server-side clustering and layer filtering
   const { data, isLoading, error } = useViewportArtifacts({
     bounds,
     zoom,
     limit: 5000,
+    layers: visibleLayers.length > 0 ? visibleLayers : undefined,
   });
 
   const clusters = data?.clusters || [];

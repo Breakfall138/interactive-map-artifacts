@@ -9,6 +9,7 @@ import {
   aggregationResultSchema,
   clusterDataSchema,
   viewportResponseSchema,
+  layerSchema,
 } from "@shared/schema";
 import {
   createTestArtifact,
@@ -133,6 +134,41 @@ describe("Zod Schemas", () => {
       });
       const result = artifactSchema.safeParse(artifact);
       expect(result.success).toBe(true);
+    });
+
+    describe("layer validation", () => {
+      it("should accept valid layer", () => {
+        const artifact = createTestArtifact({ layer: "eversource-substations" });
+        const result = artifactSchema.safeParse(artifact);
+        expect(result.success).toBe(true);
+      });
+
+      it("should use default layer when not provided", () => {
+        const artifact = {
+          id: "test-id",
+          name: "Test",
+          category: "transformer",
+          lat: 41.5,
+          lng: -72.7,
+        };
+        const result = artifactSchema.safeParse(artifact);
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.data.layer).toBe("default");
+        }
+      });
+
+      it("should reject empty layer", () => {
+        const artifact = createTestArtifact({ layer: "" });
+        const result = artifactSchema.safeParse(artifact);
+        expect(result.success).toBe(false);
+      });
+
+      it("should reject layer exceeding 100 characters", () => {
+        const artifact = createTestArtifact({ layer: "a".repeat(101) });
+        const result = artifactSchema.safeParse(artifact);
+        expect(result.success).toBe(false);
+      });
     });
   });
 
@@ -408,6 +444,78 @@ describe("Zod Schemas", () => {
       };
       const result = viewportResponseSchema.safeParse(response);
       expect(result.success).toBe(true);
+    });
+  });
+
+  describe("layerSchema", () => {
+    it("should validate valid layer", () => {
+      const layer = {
+        id: "eversource-substations",
+        name: "Eversource Substations",
+        description: "HIFLD transmission substations",
+        source: "HIFLD/ORNL",
+        artifactCount: 1072,
+        visible: true,
+        style: { color: "#ef4444" },
+      };
+      const result = layerSchema.safeParse(layer);
+      expect(result.success).toBe(true);
+    });
+
+    it("should validate layer with minimal required fields", () => {
+      const layer = {
+        id: "test-layer",
+        name: "Test Layer",
+        artifactCount: 0,
+        visible: true,
+      };
+      const result = layerSchema.safeParse(layer);
+      expect(result.success).toBe(true);
+    });
+
+    it("should reject layer without id", () => {
+      const layer = {
+        name: "Test Layer",
+        artifactCount: 0,
+        visible: true,
+      };
+      const result = layerSchema.safeParse(layer);
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject layer with empty id", () => {
+      const layer = {
+        id: "",
+        name: "Test Layer",
+        artifactCount: 0,
+        visible: true,
+      };
+      const result = layerSchema.safeParse(layer);
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject layer with negative artifact count", () => {
+      const layer = {
+        id: "test-layer",
+        name: "Test Layer",
+        artifactCount: -1,
+        visible: true,
+      };
+      const result = layerSchema.safeParse(layer);
+      expect(result.success).toBe(false);
+    });
+
+    it("should use default visible=true when not provided", () => {
+      const layer = {
+        id: "test-layer",
+        name: "Test Layer",
+        artifactCount: 0,
+      };
+      const result = layerSchema.safeParse(layer);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.visible).toBe(true);
+      }
     });
   });
 });

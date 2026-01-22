@@ -2,6 +2,19 @@
 
 This document outlines planned improvements and new features for the Interactive Map Artifacts application.
 
+## Completed
+
+### Layer Support System (Jan 2026)
+- [x] Multi-layer architecture for organizing data sources
+- [x] Database schema with `layer` column and `layers` registry table
+- [x] Automatic artifact count tracking via PostgreSQL triggers
+- [x] Frontend `LayerControl` component for toggling visibility
+- [x] Layer filtering on all artifact query endpoints
+- [x] Import script for HIFLD substation data
+- [x] Loaded 1,072 Eversource substations (CT/MA/NH)
+
+---
+
 ## High Priority
 
 ### 1. Search & Filter System
@@ -79,4 +92,4 @@ This document outlines planned improvements and new features for the Interactive
 
 ---
 
-*Last updated: 2026-01-18*
+*Last updated: 2026-01-21*

@@ -24,7 +24,7 @@ export async function registerRoutes(
   // Viewport data endpoint with clustering
   app.get("/api/artifacts/viewport", async (req, res) => {
     try {
-      const { north, south, east, west, zoom, limit } = req.query;
+      const { north, south, east, west, zoom, limit, layers } = req.query;
 
       if (!north || !south || !east || !west || !zoom) {
         return res.status(400).json({
@@ -54,7 +54,15 @@ export async function registerRoutes(
         maxResults = Math.min(parsedLimit, MAX_LIMIT);
       }
 
-      const viewportData = await storage.getViewportData(bounds, zoomLevel, maxResults);
+      // Parse layers filter (comma-separated string or array)
+      let layerFilter: string[] | undefined;
+      if (layers) {
+        layerFilter = Array.isArray(layers)
+          ? (layers as string[])
+          : (layers as string).split(",").map((l) => l.trim()).filter(Boolean);
+      }
+
+      const viewportData = await storage.getViewportData(bounds, zoomLevel, maxResults, layerFilter);
       res.json(viewportData);
     } catch (error) {
       req.logger.error("Error fetching viewport data", error as Error);
@@ -65,7 +73,15 @@ export async function registerRoutes(
   // Get all artifacts or filter by bounds
   app.get("/api/artifacts", async (req, res) => {
     try {
-      const { north, south, east, west } = req.query;
+      const { north, south, east, west, layers } = req.query;
+
+      // Parse layers filter
+      let layerFilter: string[] | undefined;
+      if (layers) {
+        layerFilter = Array.isArray(layers)
+          ? (layers as string[])
+          : (layers as string).split(",").map((l) => l.trim()).filter(Boolean);
+      }
 
       if (north && south && east && west) {
         const bounds = boundsSchema.parse({
@@ -75,11 +91,11 @@ export async function registerRoutes(
           west: parseFloat(west as string),
         });
 
-        const artifacts = await storage.getArtifactsInBounds(bounds);
+        const artifacts = await storage.getArtifactsInBounds(bounds, layerFilter);
         return res.json(artifacts);
       }
 
-      const artifacts = await storage.getAllArtifacts();
+      const artifacts = await storage.getAllArtifacts(layerFilter);
       res.json(artifacts);
     } catch (error) {
       req.logger.error("Error fetching artifacts", error as Error);
@@ -90,7 +106,17 @@ export async function registerRoutes(
   // Get artifact count - MUST be before :id route
   app.get("/api/artifacts/count", async (req, res) => {
     try {
-      const count = await storage.getArtifactCount();
+      const { layers } = req.query;
+
+      // Parse layers filter
+      let layerFilter: string[] | undefined;
+      if (layers) {
+        layerFilter = Array.isArray(layers)
+          ? (layers as string[])
+          : (layers as string).split(",").map((l) => l.trim()).filter(Boolean);
+      }
+
+      const count = await storage.getArtifactCount(layerFilter);
       res.json({ count });
     } catch (error) {
       req.logger.error("Error getting count", error as Error);
@@ -127,8 +153,16 @@ export async function registerRoutes(
   // Query artifacts in circle selection
   app.post("/api/artifacts/query/circle", async (req, res) => {
     try {
-      const circle = circleSelectionSchema.parse(req.body);
-      const aggregation = await storage.getAggregation(circle);
+      const { circle, layers } = req.body;
+      const validatedCircle = circleSelectionSchema.parse(circle || req.body);
+
+      // Parse layers filter from body
+      let layerFilter: string[] | undefined;
+      if (layers && Array.isArray(layers)) {
+        layerFilter = layers.filter((l: unknown): l is string => typeof l === "string");
+      }
+
+      const aggregation = await storage.getAggregation(validatedCircle, layerFilter);
       res.json(aggregation);
     } catch (error) {
       req.logger.error("Error querying circle", error as Error);
@@ -221,14 +255,54 @@ export async function registerRoutes(
     }
   });
 
+  // Layer management endpoints
+  app.get("/api/layers", async (req, res) => {
+    try {
+      const layers = await storage.getLayers();
+      res.json(layers);
+    } catch (error) {
+      req.logger.error("Error fetching layers", error as Error);
+      res.status(500).json({ error: "Failed to fetch layers" });
+    }
+  });
+
+  app.get("/api/layers/:id", async (req, res) => {
+    try {
+      const layer = await storage.getLayer(req.params.id);
+      if (!layer) {
+        return res.status(404).json({ error: "Layer not found" });
+      }
+      res.json(layer);
+    } catch (error) {
+      req.logger.error("Error fetching layer", error as Error);
+      res.status(500).json({ error: "Failed to fetch layer" });
+    }
+  });
+
+  app.patch("/api/layers/:id/visibility", async (req, res) => {
+    try {
+      const { visible } = req.body;
+      if (typeof visible !== "boolean") {
+        return res.status(400).json({ error: "visible must be a boolean" });
+      }
+      await storage.updateLayerVisibility(req.params.id, visible);
+      res.json({ success: true });
+    } catch (error) {
+      req.logger.error("Error updating layer visibility", error as Error);
+      res.status(500).json({ error: "Failed to update layer" });
+    }
+  });
+
   // Health check endpoint
   app.get("/api/health", async (_req, res) => {
     try {
       const count = await storage.getArtifactCount();
+      const layers = await storage.getLayers();
       res.json({
         status: "healthy",
         storage: process.env.DATABASE_URL ? "postgresql" : "memory",
         artifactCount: count,
+        layerCount: layers.length,
       });
     } catch (error) {
       res.status(503).json({

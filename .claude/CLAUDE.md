@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-MapUI is an interactive map application for visualizing and querying geospatial artifacts using Leaflet, React, and Express. Currently focused on **Eversource Connecticut service territory** utility infrastructure.
+MapUI is an interactive map application for visualizing and querying geospatial artifacts using Leaflet, React, and Express. Features **multi-layer support** for organizing data sources, currently loaded with **1,072 Eversource substations** across Connecticut, Massachusetts, and New Hampshire.
 
 ## Key Documentation
 
@@ -44,9 +44,12 @@ MapUI/
 ├── db/               # Database migrations
 │   ├── migrations/
 │   │   ├── 001_initial_schema.sql   # PostGIS schema + indexes
-│   │   └── 002_seed_connecticut.sql # CT utility data (~10k artifacts)
+│   │   ├── 002_seed_connecticut.sql # CT utility data (~10k artifacts)
+│   │   └── 003_add_layer_support.sql # Layer system + triggers
 │   └── init/
 │       └── 01_init.sh    # Docker init script
+├── scripts/          # Data import scripts
+│   └── import-substations.ts # HIFLD substation importer
 ├── tiles/            # Raster tile storage
 ├── tests/            # Test suites
 │   ├── fixtures/     # Test data generators
@@ -98,15 +101,27 @@ Without `DATABASE_URL`, the app uses in-memory storage with CT seed data.
 
 ## API Endpoints
 
+### Artifacts
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/artifacts/viewport` | Get clustered artifacts for viewport |
-| GET | `/api/artifacts` | Get all artifacts (with optional bounds) |
+| GET | `/api/artifacts/viewport` | Get clustered artifacts for viewport (supports `?layers=` filter) |
+| GET | `/api/artifacts` | Get all artifacts (supports `?layers=` filter) |
 | GET | `/api/artifacts/:id` | Get single artifact |
 | POST | `/api/artifacts` | Create new artifact |
 | POST | `/api/artifacts/query/circle` | Query artifacts in circle selection |
-| GET | `/api/artifacts/count` | Get total artifact count |
-| GET | `/api/health` | Health check (storage type + count) |
+| GET | `/api/artifacts/count` | Get total artifact count (supports `?layers=` filter) |
+
+### Layers
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/layers` | List all layers with artifact counts |
+| GET | `/api/layers/:id` | Get layer details |
+| PATCH | `/api/layers/:id/visibility` | Toggle layer visibility |
+
+### System
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/health` | Health check (storage type + counts) |
 | GET | `/api/tiles/info` | Tile layer metadata |
 | GET | `/tiles/:layer/:z/:x/:y.:format` | Serve raster tiles |
 
@@ -130,7 +145,22 @@ Without `DATABASE_URL`, the app uses in-memory storage with CT seed data.
 
 ## Recent Changes (Jan 2026)
 
-### PostGIS Persistence Layer (Latest)
+### Layer Support System (Latest)
+- **Multi-layer architecture** for organizing data from different sources
+- Database schema: `layer` column on artifacts + `layers` registry table
+- Automatic artifact count tracking via PostgreSQL triggers
+- Frontend `LayerControl` component in toolbar for toggling layer visibility
+- Layer filtering on all artifact query endpoints (`?layers=layer1,layer2`)
+- `useLayerState` React hook for layer state management
+
+### Eversource Substations Data
+- Imported **1,072 HIFLD transmission substations** from Eversource territory
+- Coverage: Connecticut (277), Massachusetts (596), New Hampshire (199)
+- Categories: `substation` (787), `tap` (284), `riser` (1)
+- Rich metadata: voltage, utility name, HIFLD IDs, Google Maps links
+- Import script: `scripts/import-substations.ts`
+
+### PostGIS Persistence Layer
 - Added PostgreSQL/PostGIS support for persistent geospatial storage
 - Storage factory pattern (`server/storage.ts`) - auto-selects PostGIS or in-memory
 - PostGIS spatial queries: `ST_DWithin`, `ST_Intersects`, `ST_MakeEnvelope`
@@ -138,12 +168,6 @@ Without `DATABASE_URL`, the app uses in-memory storage with CT seed data.
 - Connection pooling with graceful shutdown
 - Raster tile serving endpoint (`/tiles/:layer/:z/:x/:y.:format`)
 - Health check endpoint (`/api/health`)
-
-### Connecticut POC Data
-- Replaced NYC POC data with Eversource CT service territory
-- ~10,000 utility infrastructure artifacts (substations, transformers, poles, meters, etc.)
-- Clustered around Hartford, New Haven, Bridgeport, Stamford
-- Map center updated to Connecticut (41.5, -72.7)
 
 ### Docker Configuration
 - `docker-compose.yml` for full stack orchestration

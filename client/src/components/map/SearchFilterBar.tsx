@@ -98,7 +98,7 @@ export function SearchFilterBar({ onFilterChange }: SearchFilterBarProps) {
   };
 
   return (
-    <div className="absolute top-4 left-4 right-4 z-[1000] flex flex-col gap-2 md:flex-row md:items-center">
+    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] flex flex-col gap-2 md:flex-row md:items-center">
       <div className="flex-1 max-w-md">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />

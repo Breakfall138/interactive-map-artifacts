@@ -1,7 +1,8 @@
-import { Circle, X, MousePointer2 } from "lucide-react";
+import { Circle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useMapContext } from "./MapContext";
+import { LayerControl } from "./LayerControl";
 
 export function MapToolbar() {
   const { drawingMode, startDrawing, clearSelection, selectionState } =
@@ -12,10 +13,14 @@ export function MapToolbar() {
 
   return (
     <div
-      className="absolute top-4 left-4 z-[1000] flex items-center gap-3"
+      className="absolute top-20 left-4 z-[1000] flex items-center gap-3"
       data-testid="map-toolbar"
     >
       <div className="flex items-center gap-2 bg-card/95 backdrop-blur-sm rounded-lg p-2 shadow-lg border border-card-border">
+        <LayerControl />
+
+        <div className="w-px h-6 bg-border" />
+
         <Button
           size="sm"
           variant={isCircleMode ? "default" : "ghost"}

@@ -26,6 +26,7 @@ export function createTestArtifact(overrides: Partial<Artifact> = {}): Artifact 
     id: `test-${Date.now()}-${Math.random().toString(36).substring(7)}`,
     name: "Test Artifact",
     category: "transformer",
+    layer: "utility-poc",
     lat: CT_CENTER.lat,
     lng: CT_CENTER.lng,
     description: "A test artifact",
@@ -42,6 +43,7 @@ export function createTestInsertArtifact(overrides: Partial<InsertArtifact> = {}
   return {
     name: "Test Artifact",
     category: "transformer",
+    layer: "utility-poc",
     lat: CT_CENTER.lat,
     lng: CT_CENTER.lng,
     description: "A test artifact",
@@ -57,7 +59,8 @@ export function createTestArtifacts(
   count: number,
   centerLat: number = CT_CENTER.lat,
   centerLng: number = CT_CENTER.lng,
-  spread: number = 0.1
+  spread: number = 0.1,
+  layer: string = "utility-poc"
 ): Artifact[] {
   const categories = ["substation", "transformer", "pole", "meter", "switch"];
   const artifacts: Artifact[] = [];
@@ -71,6 +74,7 @@ export function createTestArtifacts(
         id: `test-artifact-${i}`,
         name: `Test Artifact #${i + 1}`,
         category: categories[i % categories.length],
+        layer,
         lat: centerLat + Math.sin(angle) * distance,
         lng: centerLng + Math.cos(angle) * distance,
         createdAt: new Date(Date.now() - i * 86400000).toISOString(), // Each artifact 1 day older
@@ -141,4 +145,12 @@ export const TEST_CATEGORIES = [
   "distribution_line",
   "switch",
   "capacitor_bank",
+];
+
+/**
+ * Sample layers used in the application
+ */
+export const TEST_LAYERS = [
+  "utility-poc",
+  "eversource-substations",
 ];

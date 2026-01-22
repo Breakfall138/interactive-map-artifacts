@@ -23,7 +23,18 @@
       "Bash(docker inspect:*)",
       "Bash(docker stop:*)",
       "Bash(npm run check:*)",
-      "Bash(powershell:*)"
+      "Bash(powershell:*)",
+      "Bash(git merge:*)",
+      "Bash(git stash:*)",
+      "Bash(npx vitest:*)",
+      "Bash(where:*)",
+      "Bash(docker compose:*)",
+      "Bash(npx tsc:*)",
+      "Bash(docker logs:*)",
+      "Bash(docker restart:*)",
+      "Bash(docker start:*)",
+      "Bash(if not exist \"d:\\\\Code\\\\MapUI\\\\scripts\" mkdir \"d:\\\\Code\\\\MapUI\\\\scripts\")",
+      "Bash(docker rm:*)"
     ]
   }
 }

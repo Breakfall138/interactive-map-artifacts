@@ -5,6 +5,7 @@ interface UseViewportArtifactsOptions {
   bounds: Bounds | null;
   zoom: number;
   limit?: number;
+  layers?: string[];
 }
 
 // Round bounds to 3 decimal places for cache key stability
@@ -22,9 +23,12 @@ export function useViewportArtifacts({
   bounds,
   zoom,
   limit = 5000,
+  layers,
 }: UseViewportArtifactsOptions) {
   const roundedBounds = bounds ? roundBounds(bounds) : null;
   const roundedZoom = Math.round(zoom);
+  // Create stable key for layers array
+  const layerKey = layers?.sort().join(",") || "all";
 
   return useQuery<ViewportResponse>({
     queryKey: [
@@ -32,6 +36,7 @@ export function useViewportArtifacts({
       roundedBounds,
       roundedZoom,
       limit,
+      layerKey,
     ],
     queryFn: async () => {
       if (!roundedBounds) {
@@ -51,6 +56,11 @@ export function useViewportArtifacts({
         zoom: roundedZoom.toString(),
         limit: limit.toString(),
       });
+
+      // Add layers filter if specified
+      if (layers && layers.length > 0) {
+        params.set("layers", layers.join(","));
+      }
 
       const response = await fetch(`/api/artifacts/viewport?${params}`);
       if (!response.ok) {

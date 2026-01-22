@@ -5,6 +5,7 @@ import type {
   CircleSelection,
   AggregationResult,
   ViewportResponse,
+  Layer,
 } from "@shared/schema";
 
 /**
@@ -12,15 +13,23 @@ import type {
  * Implementations: PostgresStorage (PostGIS), MemStorage (in-memory fallback)
  */
 export interface IStorage {
-  getAllArtifacts(): Promise<Artifact[]>;
+  // Artifact queries with optional layer filtering
+  getAllArtifacts(layers?: string[]): Promise<Artifact[]>;
   getArtifact(id: string): Promise<Artifact | undefined>;
-  getArtifactsInBounds(bounds: Bounds): Promise<Artifact[]>;
-  getArtifactsInCircle(circle: CircleSelection): Promise<Artifact[]>;
-  getAggregation(circle: CircleSelection): Promise<AggregationResult>;
-  getViewportData(bounds: Bounds, zoom: number, limit: number): Promise<ViewportResponse>;
+  getArtifactsInBounds(bounds: Bounds, layers?: string[]): Promise<Artifact[]>;
+  getArtifactsInCircle(circle: CircleSelection, layers?: string[]): Promise<Artifact[]>;
+  getAggregation(circle: CircleSelection, layers?: string[]): Promise<AggregationResult>;
+  getViewportData(bounds: Bounds, zoom: number, limit: number, layers?: string[]): Promise<ViewportResponse>;
   createArtifact(artifact: InsertArtifact): Promise<Artifact>;
   createManyArtifacts(artifacts: InsertArtifact[]): Promise<Artifact[]>;
-  getArtifactCount(): Promise<number>;
+  getArtifactCount(layers?: string[]): Promise<number>;
+
+  // Layer management
+  getLayers(): Promise<Layer[]>;
+  getLayer(id: string): Promise<Layer | undefined>;
+  createLayer(layer: Omit<Layer, "artifactCount">): Promise<Layer>;
+  updateLayerVisibility(id: string, visible: boolean): Promise<void>;
+  deleteLayer(id: string): Promise<void>;
 }
 
 let storageInstance: IStorage | null = null;

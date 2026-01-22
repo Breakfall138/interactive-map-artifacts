@@ -1,9 +1,13 @@
 import { createContext, useContext, type ReactNode } from "react";
 import { useMapState } from "@/hooks/useMapState";
+import { useLayerState } from "@/hooks/useLayerState";
 
 type MapStateReturn = ReturnType<typeof useMapState>;
+type LayerStateReturn = ReturnType<typeof useLayerState>;
 
-interface MapContextValue extends MapStateReturn {}
+interface MapContextValue extends MapStateReturn {
+  layerState: LayerStateReturn;
+}
 
 const MapContext = createContext<MapContextValue | null>(null);
 
@@ -13,9 +17,10 @@ interface MapProviderProps {
 
 export function MapProvider({ children }: MapProviderProps) {
   const mapState = useMapState();
+  const layerState = useLayerState();
 
   return (
-    <MapContext.Provider value={mapState}>
+    <MapContext.Provider value={{ ...mapState, layerState }}>
       {children}
     </MapContext.Provider>
   );

@@ -5,6 +5,7 @@ import type {
   CircleSelection,
   AggregationResult,
   ViewportResponse,
+  Layer,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import RBush from "rbush";
@@ -21,13 +22,35 @@ interface RBushItem {
 export class MemStorage implements IStorage {
   private artifacts: Map<string, Artifact>;
   private spatialIndex: RBush<RBushItem>;
+  private layers: Map<string, Layer>;
 
   constructor(seedData: boolean = true) {
     this.artifacts = new Map();
     this.spatialIndex = new RBush<RBushItem>();
+    this.layers = new Map();
+    this.initializeLayers();
     if (seedData) {
       this.seedData();
     }
+  }
+
+  private initializeLayers() {
+    this.layers.set("utility-poc", {
+      id: "utility-poc",
+      name: "CT Utility POC",
+      description: "Connecticut utility infrastructure seed data",
+      source: "generated",
+      artifactCount: 0,
+      visible: true,
+    });
+    this.layers.set("eversource-substations", {
+      id: "eversource-substations",
+      name: "Eversource Substations",
+      description: "HIFLD transmission substations in Eversource territory (CT/MA/NH)",
+      source: "HIFLD/ORNL",
+      artifactCount: 0,
+      visible: true,
+    });
   }
 
   private seedData() {
@@ -113,6 +136,7 @@ export class MemStorage implements IStorage {
         id: randomUUID(),
         name: `${baseName} #${i + 1}`,
         category,
+        layer: "utility-poc",
         lat,
         lng,
         description: `Eversource ${category.replace(/_/g, " ")} in Connecticut service territory.`,
@@ -140,10 +164,22 @@ export class MemStorage implements IStorage {
     }
 
     this.buildSpatialIndex();
+    this.updateLayerCounts();
     // Log seeding info - use dynamic import to avoid initialization issues
     import("./logging/logger").then(async ({ getLogger }) => {
       const logger = await getLogger();
       logger.info(`Seeded ${this.artifacts.size} artifacts (in-memory)`, { source: "storage" });
+    });
+  }
+
+  private updateLayerCounts() {
+    const counts = new Map<string, number>();
+    Array.from(this.artifacts.values()).forEach((artifact) => {
+      const layer = artifact.layer || "default";
+      counts.set(layer, (counts.get(layer) || 0) + 1);
+    });
+    Array.from(this.layers.entries()).forEach(([layerId, layer]) => {
+      layer.artifactCount = counts.get(layerId) || 0;
     });
   }
 
@@ -158,25 +194,33 @@ export class MemStorage implements IStorage {
     this.spatialIndex.load(items);
   }
 
-  async getAllArtifacts(): Promise<Artifact[]> {
-    return Array.from(this.artifacts.values());
+  async getAllArtifacts(layers?: string[]): Promise<Artifact[]> {
+    let artifacts = Array.from(this.artifacts.values());
+    if (layers?.length) {
+      artifacts = artifacts.filter((a) => layers.includes(a.layer || "default"));
+    }
+    return artifacts;
   }
 
   async getArtifact(id: string): Promise<Artifact | undefined> {
     return this.artifacts.get(id);
   }
 
-  async getArtifactsInBounds(bounds: Bounds): Promise<Artifact[]> {
+  async getArtifactsInBounds(bounds: Bounds, layers?: string[]): Promise<Artifact[]> {
     const results = this.spatialIndex.search({
       minX: bounds.west,
       minY: bounds.south,
       maxX: bounds.east,
       maxY: bounds.north,
     });
-    return results.map((item) => item.artifact);
+    let artifacts = results.map((item: RBushItem) => item.artifact);
+    if (layers?.length) {
+      artifacts = artifacts.filter((a: Artifact) => layers.includes(a.layer || "default"));
+    }
+    return artifacts;
   }
 
-  async getArtifactsInCircle(circle: CircleSelection): Promise<Artifact[]> {
+  async getArtifactsInCircle(circle: CircleSelection, layers?: string[]): Promise<Artifact[]> {
     const { center, radius } = circle;
     const radiusInDegrees = radius / 111320;
 
@@ -187,9 +231,9 @@ export class MemStorage implements IStorage {
       maxY: center.lat + radiusInDegrees,
     });
 
-    return candidateItems
-      .map((item) => item.artifact)
-      .filter((artifact) => {
+    let artifacts = candidateItems
+      .map((item: RBushItem) => item.artifact)
+      .filter((artifact: Artifact) => {
         const distance = this.haversineDistance(
           center.lat,
           center.lng,
@@ -198,10 +242,15 @@ export class MemStorage implements IStorage {
         );
         return distance <= radius;
       });
+
+    if (layers?.length) {
+      artifacts = artifacts.filter((a: Artifact) => layers.includes(a.layer || "default"));
+    }
+    return artifacts;
   }
 
-  async getAggregation(circle: CircleSelection): Promise<AggregationResult> {
-    const artifacts = await this.getArtifactsInCircle(circle);
+  async getAggregation(circle: CircleSelection, layers?: string[]): Promise<AggregationResult> {
+    const artifacts = await this.getArtifactsInCircle(circle, layers);
 
     const categories: Record<string, number> = {};
     artifacts.forEach((artifact) => {
@@ -220,6 +269,7 @@ export class MemStorage implements IStorage {
     const artifact: Artifact = {
       ...insertArtifact,
       id,
+      layer: insertArtifact.layer || "default",
       createdAt: new Date().toISOString(),
     };
     this.artifacts.set(id, artifact);
@@ -231,6 +281,12 @@ export class MemStorage implements IStorage {
       maxY: artifact.lat,
       artifact,
     });
+
+    // Update layer count
+    const layer = this.layers.get(artifact.layer);
+    if (layer) {
+      layer.artifactCount++;
+    }
 
     return artifact;
   }
@@ -244,16 +300,22 @@ export class MemStorage implements IStorage {
     return artifacts;
   }
 
-  async getArtifactCount(): Promise<number> {
+  async getArtifactCount(layers?: string[]): Promise<number> {
+    if (layers?.length) {
+      return Array.from(this.artifacts.values()).filter((a) =>
+        layers.includes(a.layer || "default")
+      ).length;
+    }
     return this.artifacts.size;
   }
 
   async getViewportData(
     bounds: Bounds,
     zoom: number,
-    limit: number
+    limit: number,
+    layers?: string[]
   ): Promise<ViewportResponse> {
-    const artifacts = await this.getArtifactsInBounds(bounds);
+    const artifacts = await this.getArtifactsInBounds(bounds, layers);
     const total = artifacts.length;
 
     if (zoom >= 13) {
@@ -338,6 +400,49 @@ export class MemStorage implements IStorage {
     if (zoom <= 10) return 0.5;
     if (zoom <= 12) return 0.1;
     return 0.05;
+  }
+
+  // Layer management methods
+  async getLayers(): Promise<Layer[]> {
+    return Array.from(this.layers.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  async getLayer(id: string): Promise<Layer | undefined> {
+    return this.layers.get(id);
+  }
+
+  async createLayer(layer: Omit<Layer, "artifactCount">): Promise<Layer> {
+    const newLayer: Layer = {
+      ...layer,
+      artifactCount: 0,
+    };
+    this.layers.set(layer.id, newLayer);
+    return newLayer;
+  }
+
+  async updateLayerVisibility(id: string, visible: boolean): Promise<void> {
+    const layer = this.layers.get(id);
+    if (layer) {
+      layer.visible = visible;
+    }
+  }
+
+  async deleteLayer(id: string): Promise<void> {
+    // Delete all artifacts in the layer
+    const toDelete: string[] = [];
+    Array.from(this.artifacts.entries()).forEach(([artifactId, artifact]) => {
+      if (artifact.layer === id) {
+        toDelete.push(artifactId);
+      }
+    });
+    toDelete.forEach((artifactId) => this.artifacts.delete(artifactId));
+
+    // Rebuild spatial index
+    this.spatialIndex = new RBush<RBushItem>();
+    this.buildSpatialIndex();
+
+    // Delete the layer
+    this.layers.delete(id);
   }
 
   private haversineDistance(

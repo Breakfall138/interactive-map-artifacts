@@ -6,6 +6,7 @@ import type {
   CircleSelection,
   AggregationResult,
   ViewportResponse,
+  Layer,
 } from "@shared/schema";
 import type { IStorage } from "../storage";
 
@@ -17,21 +18,28 @@ interface ClusterData {
 }
 
 export class PostgresStorage implements IStorage {
-  async getAllArtifacts(): Promise<Artifact[]> {
-    const result = await pool.query(`
-      SELECT id, name, category, description, metadata, lat, lng,
+  async getAllArtifacts(layers?: string[]): Promise<Artifact[]> {
+    const layerClause = layers?.length ? "WHERE layer = ANY($1::text[])" : "";
+    const params = layers?.length ? [layers] : [];
+
+    const result = await pool.query(
+      `
+      SELECT id, name, category, layer, description, metadata, lat, lng,
              created_at as "createdAt"
       FROM artifacts
+      ${layerClause}
       ORDER BY created_at DESC
       LIMIT 10000
-    `);
+    `,
+      params
+    );
     return result.rows.map(this.mapRowToArtifact);
   }
 
   async getArtifact(id: string): Promise<Artifact | undefined> {
     const result = await pool.query(
       `
-      SELECT id, name, category, description, metadata, lat, lng,
+      SELECT id, name, category, layer, description, metadata, lat, lng,
              created_at as "createdAt"
       FROM artifacts
       WHERE id = $1
@@ -42,28 +50,37 @@ export class PostgresStorage implements IStorage {
     return result.rows[0] ? this.mapRowToArtifact(result.rows[0]) : undefined;
   }
 
-  async getArtifactsInBounds(bounds: Bounds): Promise<Artifact[]> {
+  async getArtifactsInBounds(bounds: Bounds, layers?: string[]): Promise<Artifact[]> {
+    const layerClause = layers?.length ? "AND layer = ANY($5::text[])" : "";
+    const params: (number | string[])[] = [bounds.west, bounds.south, bounds.east, bounds.north];
+    if (layers?.length) params.push(layers);
+
     const result = await pool.query(
       `
-      SELECT id, name, category, description, metadata, lat, lng,
+      SELECT id, name, category, layer, description, metadata, lat, lng,
              created_at as "createdAt"
       FROM artifacts
       WHERE ST_Intersects(
         location,
         ST_MakeEnvelope($1, $2, $3, $4, 4326)::geography
       )
+      ${layerClause}
       LIMIT 10000
     `,
-      [bounds.west, bounds.south, bounds.east, bounds.north]
+      params
     );
 
     return result.rows.map(this.mapRowToArtifact);
   }
 
-  async getArtifactsInCircle(circle: CircleSelection): Promise<Artifact[]> {
+  async getArtifactsInCircle(circle: CircleSelection, layers?: string[]): Promise<Artifact[]> {
+    const layerClause = layers?.length ? "AND layer = ANY($4::text[])" : "";
+    const params: (number | string[])[] = [circle.center.lng, circle.center.lat, circle.radius];
+    if (layers?.length) params.push(layers);
+
     const result = await pool.query(
       `
-      SELECT id, name, category, description, metadata, lat, lng,
+      SELECT id, name, category, layer, description, metadata, lat, lng,
              created_at as "createdAt"
       FROM artifacts
       WHERE ST_DWithin(
@@ -71,18 +88,23 @@ export class PostgresStorage implements IStorage {
         ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
         $3
       )
+      ${layerClause}
     `,
-      [circle.center.lng, circle.center.lat, circle.radius]
+      params
     );
 
     return result.rows.map(this.mapRowToArtifact);
   }
 
-  async getAggregation(circle: CircleSelection): Promise<AggregationResult> {
+  async getAggregation(circle: CircleSelection, layers?: string[]): Promise<AggregationResult> {
+    const layerClause = layers?.length ? "AND layer = ANY($4::text[])" : "";
+    const params: (number | string[])[] = [circle.center.lng, circle.center.lat, circle.radius];
+    if (layers?.length) params.push(layers);
+
     const result = await pool.query(
       `
       WITH circle_artifacts AS (
-        SELECT id, name, category, description, metadata, lat, lng,
+        SELECT id, name, category, layer, description, metadata, lat, lng,
                created_at as "createdAt"
         FROM artifacts
         WHERE ST_DWithin(
@@ -90,6 +112,7 @@ export class PostgresStorage implements IStorage {
           ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
           $3
         )
+        ${layerClause}
       ),
       category_counts AS (
         SELECT category, COUNT(*)::integer as count
@@ -104,6 +127,7 @@ export class PostgresStorage implements IStorage {
             'id', id,
             'name', name,
             'category', category,
+            'layer', layer,
             'description', description,
             'metadata', metadata,
             'lat', lat,
@@ -112,7 +136,7 @@ export class PostgresStorage implements IStorage {
           )
         ) FROM circle_artifacts) as artifacts
     `,
-      [circle.center.lng, circle.center.lat, circle.radius]
+      params
     );
 
     const row = result.rows[0];
@@ -126,22 +150,35 @@ export class PostgresStorage implements IStorage {
   async getViewportData(
     bounds: Bounds,
     zoom: number,
-    limit: number
+    limit: number,
+    layers?: string[]
   ): Promise<ViewportResponse> {
+    const layerClause = layers?.length ? "AND layer = ANY($6::text[])" : "";
+
     // At high zoom levels (>= 13), return individual artifacts
     if (zoom >= 13) {
+      const params: (number | string[])[] = [
+        bounds.west,
+        bounds.south,
+        bounds.east,
+        bounds.north,
+        limit + 1,
+      ];
+      if (layers?.length) params.push(layers);
+
       const result = await pool.query(
         `
-        SELECT id, name, category, description, metadata, lat, lng,
+        SELECT id, name, category, layer, description, metadata, lat, lng,
                created_at as "createdAt"
         FROM artifacts
         WHERE ST_Intersects(
           location,
           ST_MakeEnvelope($1, $2, $3, $4, 4326)::geography
         )
+        ${layerClause}
         LIMIT $5
       `,
-        [bounds.west, bounds.south, bounds.east, bounds.north, limit + 1]
+        params
       );
 
       const truncated = result.rows.length > limit;
@@ -157,11 +194,19 @@ export class PostgresStorage implements IStorage {
 
     // At lower zoom levels, perform grid-based clustering
     const gridSize = this.getClusterGridSize(zoom);
+    const params: (number | string[])[] = [
+      bounds.west,
+      bounds.south,
+      bounds.east,
+      bounds.north,
+      gridSize,
+    ];
+    if (layers?.length) params.push(layers);
 
     const result = await pool.query(
       `
       WITH viewport_artifacts AS (
-        SELECT id, name, category, description, metadata, lat, lng,
+        SELECT id, name, category, layer, description, metadata, lat, lng,
                created_at as "createdAt",
                floor(lng / $5) as cell_x,
                floor(lat / $5) as cell_y
@@ -170,6 +215,7 @@ export class PostgresStorage implements IStorage {
           location,
           ST_MakeEnvelope($1, $2, $3, $4, 4326)::geography
         )
+        ${layerClause}
       ),
       grid_cells AS (
         SELECT
@@ -183,6 +229,7 @@ export class PostgresStorage implements IStorage {
               'id', id,
               'name', name,
               'category', category,
+              'layer', layer,
               'description', description,
               'metadata', metadata,
               'lat', lat,
@@ -202,7 +249,7 @@ export class PostgresStorage implements IStorage {
         CASE WHEN point_count <= 3 THEN artifacts ELSE NULL END as artifacts
       FROM grid_cells
     `,
-      [bounds.west, bounds.south, bounds.east, bounds.north, gridSize]
+      params
     );
 
     const clusters: ClusterData[] = [];
@@ -251,14 +298,15 @@ export class PostgresStorage implements IStorage {
   async createArtifact(artifact: InsertArtifact): Promise<Artifact> {
     const result = await pool.query(
       `
-      INSERT INTO artifacts (name, category, description, metadata, location)
-      VALUES ($1, $2, $3, $4, ST_SetSRID(ST_MakePoint($5, $6), 4326)::geography)
-      RETURNING id, name, category, description, metadata, lat, lng,
+      INSERT INTO artifacts (name, category, layer, description, metadata, location)
+      VALUES ($1, $2, $3, $4, $5, ST_SetSRID(ST_MakePoint($6, $7), 4326)::geography)
+      RETURNING id, name, category, layer, description, metadata, lat, lng,
                 created_at as "createdAt"
     `,
       [
         artifact.name,
         artifact.category,
+        artifact.layer || "default",
         artifact.description || null,
         JSON.stringify(artifact.metadata || {}),
         artifact.lng,
@@ -278,14 +326,15 @@ export class PostgresStorage implements IStorage {
       for (const artifact of artifacts) {
         const result = await client.query(
           `
-          INSERT INTO artifacts (name, category, description, metadata, location)
-          VALUES ($1, $2, $3, $4, ST_SetSRID(ST_MakePoint($5, $6), 4326)::geography)
-          RETURNING id, name, category, description, metadata, lat, lng,
+          INSERT INTO artifacts (name, category, layer, description, metadata, location)
+          VALUES ($1, $2, $3, $4, $5, ST_SetSRID(ST_MakePoint($6, $7), 4326)::geography)
+          RETURNING id, name, category, layer, description, metadata, lat, lng,
                     created_at as "createdAt"
         `,
           [
             artifact.name,
             artifact.category,
+            artifact.layer || "default",
             artifact.description || null,
             JSON.stringify(artifact.metadata || {}),
             artifact.lng,
@@ -305,9 +354,88 @@ export class PostgresStorage implements IStorage {
     }
   }
 
-  async getArtifactCount(): Promise<number> {
-    const result = await pool.query("SELECT COUNT(*)::integer as count FROM artifacts");
+  async getArtifactCount(layers?: string[]): Promise<number> {
+    const layerClause = layers?.length ? "WHERE layer = ANY($1::text[])" : "";
+    const params = layers?.length ? [layers] : [];
+
+    const result = await pool.query(
+      `SELECT COUNT(*)::integer as count FROM artifacts ${layerClause}`,
+      params
+    );
     return result.rows[0].count;
+  }
+
+  // Layer management methods
+  async getLayers(): Promise<Layer[]> {
+    const result = await pool.query(`
+      SELECT id, name, description, source, source_date as "sourceDate",
+             artifact_count as "artifactCount", visible, style
+      FROM layers
+      ORDER BY name
+    `);
+    return result.rows.map(this.mapRowToLayer);
+  }
+
+  async getLayer(id: string): Promise<Layer | undefined> {
+    const result = await pool.query(
+      `
+      SELECT id, name, description, source, source_date as "sourceDate",
+             artifact_count as "artifactCount", visible, style
+      FROM layers
+      WHERE id = $1
+    `,
+      [id]
+    );
+    return result.rows[0] ? this.mapRowToLayer(result.rows[0]) : undefined;
+  }
+
+  async createLayer(layer: Omit<Layer, "artifactCount">): Promise<Layer> {
+    const result = await pool.query(
+      `
+      INSERT INTO layers (id, name, description, source, visible, style)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (id) DO UPDATE SET
+        name = EXCLUDED.name,
+        description = EXCLUDED.description,
+        source = EXCLUDED.source,
+        visible = EXCLUDED.visible,
+        style = EXCLUDED.style,
+        updated_at = NOW()
+      RETURNING id, name, description, source, source_date as "sourceDate",
+                artifact_count as "artifactCount", visible, style
+    `,
+      [
+        layer.id,
+        layer.name,
+        layer.description || null,
+        layer.source || null,
+        layer.visible ?? true,
+        JSON.stringify(layer.style || {}),
+      ]
+    );
+    return this.mapRowToLayer(result.rows[0]);
+  }
+
+  async updateLayerVisibility(id: string, visible: boolean): Promise<void> {
+    await pool.query(
+      `UPDATE layers SET visible = $2, updated_at = NOW() WHERE id = $1`,
+      [id, visible]
+    );
+  }
+
+  async deleteLayer(id: string): Promise<void> {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("DELETE FROM artifacts WHERE layer = $1", [id]);
+      await client.query("DELETE FROM layers WHERE id = $1", [id]);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   private getClusterGridSize(zoom: number): number {
@@ -323,6 +451,7 @@ export class PostgresStorage implements IStorage {
       id: row.id as string,
       name: row.name as string,
       category: row.category as string,
+      layer: (row.layer as string) || "default",
       description: (row.description as string) || undefined,
       metadata:
         typeof row.metadata === "string"
@@ -334,6 +463,22 @@ export class PostgresStorage implements IStorage {
         row.createdAt instanceof Date
           ? row.createdAt.toISOString()
           : (row.createdAt as string) || new Date().toISOString(),
+    };
+  }
+
+  private mapRowToLayer(row: Record<string, unknown>): Layer {
+    return {
+      id: row.id as string,
+      name: row.name as string,
+      description: (row.description as string) || undefined,
+      source: (row.source as string) || undefined,
+      sourceDate: (row.sourceDate as string) || undefined,
+      artifactCount: (row.artifactCount as number) || 0,
+      visible: row.visible as boolean,
+      style:
+        typeof row.style === "string"
+          ? JSON.parse(row.style)
+          : (row.style as Record<string, unknown>) || undefined,
     };
   }
 }
